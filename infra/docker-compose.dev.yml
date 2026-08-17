@@ -1,0 +1,39 @@
+# Development overrides — hot reload, source mounting
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  # Uncomment when Dockerfiles are ready:
+  # server:
+  #   build:
+  #     context: ../server
+  #     dockerfile: ../infra/docker/Dockerfile.server
+  #     target: development
+  #   volumes:
+  #     - ../server/src:/app/src
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     NODE_ENV: development
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #
+  # client:
+  #   build:
+  #     context: ../client
+  #     dockerfile: ../infra/docker/Dockerfile.client
+  #     target: development
+  #   volumes:
+  #     - ../client/src:/app/src
+  #   ports:
+  #     - "5173:5173"

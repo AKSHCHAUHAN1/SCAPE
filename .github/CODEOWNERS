@@ -1,0 +1,21 @@
+# SCAPE CODEOWNERS
+# These owners will be automatically requested for review on PRs.
+
+# Global
+* @AKSHCHAUHAN1
+
+# Frontend
+/client/ @AKSHCHAUHAN1
+
+# Backend
+/server/ @AKSHCHAUHAN1
+
+# Infrastructure & Terraform
+/terraform/ @AKSHCHAUHAN1
+/infra/ @AKSHCHAUHAN1
+
+# CI/CD
+/.github/ @AKSHCHAUHAN1
+
+# Documentation
+/docs/ @AKSHCHAUHAN1

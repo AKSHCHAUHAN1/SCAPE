@@ -1,0 +1,42 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Server build
+      - name: Build server
+        working-directory: server
+        run: |
+          npm ci
+          npm run build
+
+      # Client build
+      - name: Build client
+        working-directory: client
+        run: |
+          npm ci
+          npm run build
+
+      # Placeholder: Add actual deployment steps
+      # e.g., Docker build + push to ECR, ECS deploy, K8s apply
+      - name: Deploy (placeholder)
+        run: echo "Deployment steps will be configured in Sprint 5"
