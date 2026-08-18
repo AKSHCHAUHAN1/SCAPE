@@ -1,18 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 
-// Pages — lazy-loaded in later sprints
-// import Login from '@/pages/Login';
-// import Services from '@/pages/Services';
-// import CreateService from '@/pages/CreateService';
-// import ServiceDetail from '@/pages/ServiceDetail';
-// import CostDashboard from '@/pages/CostDashboard';
-// import AuditLog from '@/pages/AuditLog';
-// import Profile from '@/pages/Profile';
-
 function App() {
   return (
     <Routes>
-      {/* Routes will be wired up as pages are built */}
       <Route path="/" element={<Placeholder page="Home" />} />
       <Route path="/login" element={<Placeholder page="Login" />} />
       <Route path="/services" element={<Placeholder page="Service Catalog" />} />
@@ -29,8 +19,12 @@ function App() {
 /** Temporary placeholder — will be replaced by actual page components */
 function Placeholder({ page }: { page: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-      <h1>SCAPE — {page}</h1>
+    <div className="flex items-center justify-center h-screen bg-bg">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold text-text mb-2">SCAPE</h1>
+        <p className="text-text-secondary text-lg">{page}</p>
+        <div className="mt-6 h-1 w-24 mx-auto bg-gradient-to-r from-primary to-secondary rounded-full" />
+      </div>
     </div>
   );
 }

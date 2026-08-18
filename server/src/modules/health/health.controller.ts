@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import { pool } from '../../database/index.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * GET /health
@@ -14,17 +16,25 @@ export function getHealth(_req: Request, res: Response): void {
 
 /**
  * GET /health/ready
- * Readiness check — verifies database and Redis connectivity.
- * Expand as dependencies are added.
+ * Readiness check — verifies database connectivity.
  */
-export function getReady(_req: Request, res: Response): void {
-  // TODO: Add DB and Redis ping checks in Sprint 1
-  res.json({
-    status: 'ok',
-    checks: {
-      database: 'not_configured',
-      redis: 'not_configured',
-    },
+export async function getReady(_req: Request, res: Response): Promise<void> {
+  const checks: Record<string, string> = {};
+
+  // Check PostgreSQL
+  try {
+    await pool.query('SELECT 1');
+    checks.database = 'ok';
+  } catch (err) {
+    logger.error({ err }, 'Health check: database unreachable');
+    checks.database = 'unreachable';
+  }
+
+  const allHealthy = Object.values(checks).every((v) => v === 'ok');
+
+  res.status(allHealthy ? 200 : 503).json({
+    status: allHealthy ? 'ok' : 'degraded',
+    checks,
     timestamp: new Date().toISOString(),
   });
 }

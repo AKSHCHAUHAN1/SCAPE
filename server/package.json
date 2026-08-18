@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "express": "^4.21.0",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "helmet": "^8.0.0",
     "compression": "^1.7.4",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/cookie-parser": "^1.4.7",
     "@types/cors": "^2.8.17",
     "@types/compression": "^1.7.5",
     "@types/jsonwebtoken": "^9.0.7",

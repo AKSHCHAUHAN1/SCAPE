@@ -2,14 +2,15 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import { config } from './config/index.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 
-// Route imports (uncomment as modules are built)
+// Route imports
 import { healthRoutes } from './modules/health/health.routes.js';
-// import { authRoutes } from './modules/auth/auth.routes.js';
-// import { userRoutes } from './modules/users/users.routes.js';
+import { authRoutes } from './modules/auth/auth.routes.js';
+import { userRoutes } from './modules/users/users.routes.js';
 // import { teamRoutes } from './modules/teams/teams.routes.js';
 // import { templateRoutes } from './modules/templates/templates.routes.js';
 // import { serviceRoutes } from './modules/services/services.routes.js';
@@ -27,12 +28,13 @@ app.use(compression());
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 app.use(requestLogger);
 
 // ---- Routes ----
 app.use('/health', healthRoutes);
-// app.use('/auth', authRoutes);
-// app.use('/users', userRoutes);
+app.use('/auth', authRoutes);
+app.use('/users', userRoutes);
 // app.use('/teams', teamRoutes);
 // app.use('/templates', templateRoutes);
 // app.use('/services', serviceRoutes);
