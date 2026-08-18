@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { query } from '../../database/index.js';
 import { config } from '../../config/index.js';
 import { AppError } from '../../middleware/errorHandler.js';
@@ -150,7 +150,7 @@ export async function refreshAccessToken(refreshToken: string) {
         teamId: user.team_id || '',
       },
       config.jwt.accessSecret,
-      { expiresIn: config.jwt.accessExpiry },
+      { expiresIn: config.jwt.accessExpiry } as SignOptions,
     );
 
     return { accessToken };
@@ -165,11 +165,11 @@ export async function refreshAccessToken(refreshToken: string) {
 function generateTokens(payload: TokenPayload) {
   const accessToken = jwt.sign(payload, config.jwt.accessSecret, {
     expiresIn: config.jwt.accessExpiry,
-  });
+  } as SignOptions);
 
   const refreshToken = jwt.sign(payload, config.jwt.refreshSecret, {
     expiresIn: config.jwt.refreshExpiry,
-  });
+  } as SignOptions);
 
   return { accessToken, refreshToken };
 }
