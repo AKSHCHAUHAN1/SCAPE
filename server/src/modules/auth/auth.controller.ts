@@ -78,7 +78,12 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
 /**
  * POST /auth/logout
  */
-export async function logout(_req: Request, res: Response) {
+export async function logout(req: Request, res: Response) {
+  const refreshToken = req.cookies?.refreshToken;
+  if (refreshToken) {
+    authService.revokeRefreshToken(refreshToken);
+  }
+
   // Clear the refresh token cookie
   res.clearCookie('refreshToken', {
     httpOnly: true,

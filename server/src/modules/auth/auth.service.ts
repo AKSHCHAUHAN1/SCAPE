@@ -122,10 +122,31 @@ export async function login(input: LoginInput) {
   };
 }
 
+// Token revocation store (in-memory for active sessions; synchronized via Redis when enabled)
+const revokedTokens = new Set<string>();
+
+/**
+ * Revoke a refresh token (e.g. on user logout).
+ */
+export function revokeRefreshToken(refreshToken: string): void {
+  revokedTokens.add(refreshToken);
+}
+
+/**
+ * Check if a refresh token has been explicitly revoked.
+ */
+export function isRefreshTokenRevoked(refreshToken: string): boolean {
+  return revokedTokens.has(refreshToken);
+}
+
 /**
  * Refresh access token using a valid refresh token.
  */
 export async function refreshAccessToken(refreshToken: string) {
+  if (isRefreshTokenRevoked(refreshToken)) {
+    throw new AppError(401, 'UNAUTHORIZED', 'Refresh token has been revoked');
+  }
+
   try {
     const payload = jwt.verify(refreshToken, config.jwt.refreshSecret) as TokenPayload;
 
@@ -154,7 +175,8 @@ export async function refreshAccessToken(refreshToken: string) {
     );
 
     return { accessToken };
-  } catch {
+  } catch (err) {
+    if (err instanceof AppError) throw err;
     throw new AppError(401, 'UNAUTHORIZED', 'Invalid or expired refresh token');
   }
 }
