@@ -6,6 +6,8 @@ import { config } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
 import { logAction } from '../audit/audit.service.js';
 import { TerraformRunner } from './terraform-runner.js';
+import { renderWorkflowYaml } from '../cicd/workflow-renderer.js';
+import { GitHubIntegrator } from '../cicd/github-client.js';
 
 const stsClient = new STSClient({ region: config.aws.region });
 
@@ -80,7 +82,7 @@ async function assumeProvisioningRole(serviceId: string) {
 export const provisioningWorker = new Worker(
   'provisioning',
   async (job: Job<ProvisioningJobData>) => {
-    const { jobId, serviceId, serviceName, terraformModulePath, region, teamId, triggeredBy } = job.data;
+    const { jobId, serviceId, serviceName, templateId, terraformModulePath, region, teamId, triggeredBy } = job.data;
     
     logger.info({ jobId, serviceId }, 'Starting provisioning job');
     
@@ -125,6 +127,30 @@ export const provisioningWorker = new Worker(
         await updateJobStatus(jobId, 'succeeded');
         await updateServiceStatus(serviceId, 'active', repositoryUrl);
         
+        // CI/CD Integration (Sprint 5-6)
+        try {
+          const workflowYaml = await renderWorkflowYaml(
+            templateId.includes('static') ? 'static-frontend' : 'nodejs-api',
+            {
+              serviceName,
+              awsRegion: region,
+              ecrRepository: outputs.ecr_repository_url?.value,
+              ecsCluster: outputs.ecs_cluster_name?.value,
+              ecsService: outputs.ecs_service_name?.value,
+              taskDefinition: outputs.ecs_task_definition_family?.value,
+            },
+          );
+          if (repositoryUrl) {
+            const gitHub = new GitHubIntegrator();
+            await gitHub.commitWorkflowFile({
+              repoUrl: repositoryUrl,
+              content: workflowYaml,
+            });
+          }
+        } catch (cicdErr: any) {
+          logger.warn({ cicdErr: cicdErr.message }, 'CI/CD workflow generation warning');
+        }
+
         await logAction({
           actorId: triggeredBy,
           action: 'job.succeeded',

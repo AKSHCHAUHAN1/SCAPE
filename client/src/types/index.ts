@@ -137,3 +137,50 @@ export interface AuthResponse {
   accessToken: string;
   user: User;
 }
+
+export interface CreateServiceInput {
+  name: string;
+  templateId: string;
+  region: string;
+}
+
+export interface CreateServiceResponse {
+  service: Service;
+  job: {
+    id: string;
+    status: JobStatus;
+    createdAt: string;
+  };
+}
+
+export interface ServiceCostResponse {
+  serviceId: string;
+  totalUsd: number;
+  records: CostRecord[];
+  resourceBreakdown: {
+    resource: string;
+    amountUsd: number;
+  }[];
+}
+
+export interface CostSummary {
+  totalCostUsd: number;
+  monthlyCostUsd: number;
+  servicesCount: number;
+  servicesCosts: {
+    serviceId: string;
+    serviceName: string;
+    totalUsd: number;
+  }[];
+  monthlyTrend: {
+    month: string;
+    amountUsd: number;
+  }[];
+}
+
+export interface CreateDeploymentInput {
+  serviceId: string;
+  branch?: string;
+  commitSha?: string;
+}
+

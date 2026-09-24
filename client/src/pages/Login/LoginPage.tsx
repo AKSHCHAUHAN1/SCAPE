@@ -254,8 +254,37 @@ export default function LoginPage() {
           </button>
         </form>
 
+        {/* Quick Demo Accounts */}
+        <div className="mt-6 pt-5 border-t border-border/60">
+          <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-2 text-center">
+            Quick Demo Sign-In
+          </p>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {[
+              { label: 'Admin', email: 'admin@scape.dev', role: 'admin' },
+              { label: 'DevOps', email: 'devops@scape.dev', role: 'devops' },
+              { label: 'Team Lead', email: 'lead@scape.dev', role: 'team_lead' },
+              { label: 'Developer', email: 'dev@scape.dev', role: 'developer' },
+            ].map((acc) => (
+              <button
+                key={acc.role}
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setEmail(acc.email);
+                  setPassword('Password123!');
+                }}
+                className="p-2 rounded-xl bg-bg-secondary hover:bg-bg-tertiary border border-border text-left transition-colors cursor-pointer"
+              >
+                <span className="font-semibold text-text block">{acc.label}</span>
+                <span className="text-[10px] text-text-muted truncate block">{acc.email}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Footer Security Badging */}
-        <div className="mt-8 pt-6 border-t border-border/50 flex items-center justify-center gap-2 text-xs text-text-muted">
+        <div className="mt-6 pt-4 border-t border-border/50 flex items-center justify-center gap-2 text-xs text-text-muted">
           <Sparkles className="w-4 h-4 text-primary" />
           <span>Secured with JWT HttpOnly Tokens & RBAC Policies</span>
         </div>

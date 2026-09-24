@@ -4,16 +4,16 @@ import { MemoryRouter } from 'react-router-dom';
 import App from './App.js';
 
 describe('Client Portal - App Smoke Tests', () => {
-  it('renders landing page with SCAPE Platform branding', () => {
+  it('redirects root "/" to login page when unauthenticated', () => {
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('SCAPE Platform')).toBeInTheDocument();
-    expect(screen.getByText(/Self-service Cloud Automation & Provisioning Engine/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Sign In \/ Register/i })).toBeInTheDocument();
+    // After redirect to /login, the login form should be visible
+    expect(screen.getByRole('button', { name: 'Sign In' })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('developer@company.com')).toBeInTheDocument();
   });
 
   it('renders login page with email and password inputs when at /login', () => {

@@ -15,10 +15,10 @@ import { teamRoutes } from './modules/teams/teams.routes.js';
 import { templateRoutes } from './modules/templates/templates.routes.js';
 import { serviceRoutes } from './modules/services/services.routes.js';
 import { provisioningRoutes, serviceJobRoutes } from './modules/provisioning/provisioning.routes.js';
-// import { deploymentRoutes } from './modules/deployments/deployments.routes.js';
-// import { costRoutes } from './modules/cost/cost.routes.js';
+import { deploymentRoutes, serviceDeploymentRoutes } from './modules/deployments/deployments.routes.js';
+import { costRoutes, serviceCostRoutes } from './modules/cost/cost.routes.js';
 import { auditRoutes } from './modules/audit/audit.routes.js';
-// import { webhookRoutes } from './modules/cicd/webhook.routes.js';
+import { webhookRoutes } from './modules/cicd/webhook.routes.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 
 const app = express();
@@ -40,11 +40,13 @@ app.use('/teams', teamRoutes);
 app.use('/templates', templateRoutes);
 app.use('/services', serviceRoutes);
 app.use('/services', serviceJobRoutes); // GET /services/:serviceId/jobs
+app.use('/services', serviceDeploymentRoutes); // GET /services/:serviceId/deployments
+app.use('/services', serviceCostRoutes); // GET /services/:serviceId/costs
 app.use('/jobs', provisioningRoutes);
-// app.use('/deployments', deploymentRoutes);
-// app.use('/costs', costRoutes);
+app.use('/deployments', deploymentRoutes);
+app.use('/costs', costRoutes);
 app.use('/audit-logs', auditRoutes);
-// app.use('/webhooks', webhookRoutes);
+app.use('/webhooks', webhookRoutes);
 
 // ---- Error Handling ----
 app.use(errorHandler);
