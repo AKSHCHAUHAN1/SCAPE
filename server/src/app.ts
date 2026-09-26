@@ -27,7 +27,12 @@ const app = express();
 app.use(helmet());
 app.use(compression());
 app.use(cors({ origin: config.corsOrigin, credentials: true }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  verify: (req: any, _res, buf) => {
+    req.rawBody = buf;
+  },
+}));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(requestLogger);

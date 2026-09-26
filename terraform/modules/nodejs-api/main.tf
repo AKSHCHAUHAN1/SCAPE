@@ -29,6 +29,43 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
+# Internet Gateway for public subnets
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = merge(var.tags, {
+    Name = "${var.service_name}-igw"
+  })
+}
+
+# Route table for public subnets
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.service_name}-public-rt"
+  })
+}
+
+resource "aws_route_table_association" "public" {
+  count          = 2
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+# CloudWatch Log Group for ECS containers
+resource "aws_cloudwatch_log_group" "ecs" {
+  name              = "/ecs/${var.service_name}"
+  retention_in_days = 30
+
+  tags = var.tags
+}
+
 # 2. ECS Cluster & Fargate Task
 resource "aws_ecs_cluster" "main" {
   name = "${var.service_name}-cluster"

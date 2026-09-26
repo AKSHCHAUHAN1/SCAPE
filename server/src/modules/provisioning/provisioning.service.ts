@@ -11,6 +11,9 @@ interface JobRow {
   status: string;
   terraform_workspace: string | null;
   terraform_run_id: string | null;
+  terraform_logs?: string | null;
+  terraform_plan_output?: string | null;
+  timeout_at?: Date | null;
   error_message: string | null;
   started_at: Date | null;
   completed_at: Date | null;

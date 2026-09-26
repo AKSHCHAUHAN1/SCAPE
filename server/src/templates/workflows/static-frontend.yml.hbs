@@ -7,8 +7,8 @@ on:
 
 env:
   AWS_REGION: {{ awsRegion }}
-  S3_BUCKET: {{ s3Bucket }}
-  CLOUDFRONT_DISTRIBUTION_ID: {{ cloudfrontDistributionId }}
+  S3_BUCKET: {{#if s3BucketName}}{{ s3BucketName }}{{else}}{{ s3Bucket }}{{/if}}
+  CLOUDFRONT_DISTRIBUTION_ID: {{#if cloudFrontDistributionId}}{{ cloudFrontDistributionId }}{{else}}{{ cloudfrontDistributionId }}{{/if}}
 
 permissions:
   id-token: write

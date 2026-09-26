@@ -37,11 +37,16 @@ export const config = {
   terraform: {
     stateBucket: process.env.TF_STATE_BUCKET || 'scape-tf-state',
     lockTable: process.env.TF_LOCK_TABLE || 'scape-tf-locks',
+    applyTimeoutMs: parseInt(process.env.TF_APPLY_TIMEOUT_MS || '600000', 10),   // 10 min
+    destroyTimeoutMs: parseInt(process.env.TF_DESTROY_TIMEOUT_MS || '300000', 10), // 5 min
   },
 
   github: {
     appId: process.env.GITHUB_APP_ID || '',
     privateKeyPath: process.env.GITHUB_APP_PRIVATE_KEY_PATH || '',
     webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
+    installationId: process.env.GITHUB_APP_INSTALLATION_ID || '',
   },
+
+  publicUrl: process.env.SCAPE_PUBLIC_URL || process.env.PUBLIC_URL || '',
 } as const;
