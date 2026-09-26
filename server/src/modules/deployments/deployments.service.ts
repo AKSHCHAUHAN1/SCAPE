@@ -12,6 +12,8 @@ interface DeploymentRow {
   status: 'pending' | 'running' | 'succeeded' | 'failed';
   commit_sha: string | null;
   branch: string;
+  workflow_content_hash?: string | null;
+  workflow_file_path?: string | null;
   started_at: Date | null;
   completed_at: Date | null;
   created_at: Date;
@@ -26,6 +28,8 @@ function formatDeployment(row: DeploymentRow) {
     status: row.status,
     commitSha: row.commit_sha,
     branch: row.branch,
+    workflowContentHash: row.workflow_content_hash,
+    workflowFilePath: row.workflow_file_path,
     startedAt: row.started_at,
     completedAt: row.completed_at,
     createdAt: row.created_at,
