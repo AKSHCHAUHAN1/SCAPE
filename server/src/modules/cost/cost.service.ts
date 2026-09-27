@@ -17,11 +17,18 @@ interface CostRecordRow {
 }
 
 function formatCostRecord(row: CostRecordRow) {
+  const pStart = row.period_start instanceof Date
+    ? row.period_start.toISOString().split('T')[0]
+    : String(row.period_start);
+  const pEnd = row.period_end instanceof Date
+    ? row.period_end.toISOString().split('T')[0]
+    : String(row.period_end);
+
   return {
     id: row.id,
     serviceId: row.service_id,
-    periodStart: row.period_start,
-    periodEnd: row.period_end,
+    periodStart: pStart,
+    periodEnd: pEnd,
     amountUsd: parseFloat(row.amount_usd),
     currency: row.currency,
     awsResourceIds: Array.isArray(row.aws_resource_ids) ? row.aws_resource_ids : [],
