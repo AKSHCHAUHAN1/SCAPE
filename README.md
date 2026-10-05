@@ -100,6 +100,17 @@ cd client && npm install && npm run dev
 - **Backend API**: http://localhost:3000
 - **API Health**: http://localhost:3000/health
 
+### Stop and clean up
+
+To stop the development servers and remove the PostgreSQL and Redis containers
+and their local data volumes:
+
+```bash
+./scripts/cleanup.sh
+```
+
+This preserves source code, environment files, and installed dependencies.
+
 ## Development Workflow
 
 We follow **GitHub Flow**:

@@ -5,7 +5,10 @@ set -euo pipefail
 # SCAPE — Local Development Setup
 # ========================
 # This script sets up your local development environment.
-# Run from the repo root: ./scripts/setup.sh
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
 
 echo "🚀 Setting up SCAPE development environment..."
 
@@ -39,14 +42,17 @@ fi
 
 # ---- Install dependencies ----
 echo "📦 Installing server dependencies..."
-(cd server && npm install)
+(cd "$REPO_ROOT/server" && npm install)
 
 echo "📦 Installing client dependencies..."
-(cd client && npm install)
+(cd "$REPO_ROOT/client" && npm install)
 
 # ---- Start infrastructure ----
 echo "🐳 Starting PostgreSQL and Redis..."
-docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml up -d
+docker compose \
+  -f "$REPO_ROOT/infra/docker-compose.yml" \
+  -f "$REPO_ROOT/infra/docker-compose.dev.yml" \
+  up -d
 
 echo ""
 echo "✅ Setup complete!"
@@ -57,3 +63,5 @@ echo ""
 echo "   Backend:  http://localhost:3000"
 echo "   Frontend: http://localhost:5173"
 echo "   Health:   http://localhost:3000/health"
+echo ""
+echo "   Cleanup:  ./scripts/cleanup.sh"
