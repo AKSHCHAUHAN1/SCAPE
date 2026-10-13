@@ -84,15 +84,11 @@ cp server/.env.example server/.env
 ### 3. Start Local Development
 
 ```bash
-# Start PostgreSQL + Redis via Docker
-docker compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml up -d
-
-# Start the backend
-cd server && npm install && npm run dev
-
-# Start the frontend (in another terminal)
-cd client && npm install && npm run dev
+./scripts/setup.sh
 ```
+
+This installs dependencies, starts PostgreSQL and Redis, and launches the
+backend and frontend development servers.
 
 ### 4. Access
 
