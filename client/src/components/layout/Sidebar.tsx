@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore.js';
 import {
+  LayoutDashboard,
   Boxes,
   PlusCircle,
   BarChart3,
@@ -17,6 +18,12 @@ export const Sidebar: React.FC = () => {
   const isAdmin = user?.role === 'admin';
 
   const navItems = [
+    {
+      to: '/dashboard',
+      label: 'Dashboard',
+      icon: LayoutDashboard,
+      end: true,
+    },
     {
       to: '/services',
       label: 'Service Catalog',

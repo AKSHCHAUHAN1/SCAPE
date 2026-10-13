@@ -17,12 +17,9 @@ interface CostRecordRow {
 }
 
 function formatCostRecord(row: CostRecordRow) {
-  const pStart = row.period_start instanceof Date
-    ? row.period_start.toISOString().split('T')[0]
-    : String(row.period_start);
-  const pEnd = row.period_end instanceof Date
-    ? row.period_end.toISOString().split('T')[0]
-    : String(row.period_end);
+  // period_start / period_end are returned as strings from PostgreSQL date columns
+  const pStart = String(row.period_start).substring(0, 10);
+  const pEnd = String(row.period_end).substring(0, 10);
 
   return {
     id: row.id,

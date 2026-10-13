@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/Login/index.js';
+import { DashboardPage } from './pages/Dashboard/index.js';
 import ServicesPage from './pages/Services/index.js';
 import CreateServicePage from './pages/CreateService/index.js';
 import ServiceDetailPage from './pages/ServiceDetail/index.js';
@@ -15,9 +16,10 @@ function App() {
     <Routes>
       <Route
         path="/"
-        element={<Navigate to={isAuthenticated ? '/services' : '/login'} replace />}
+        element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />}
       />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/services" element={<ServicesPage />} />
       <Route path="/services/new" element={<CreateServicePage />} />
       <Route path="/services/:id" element={<ServiceDetailPage />} />
@@ -25,7 +27,7 @@ function App() {
       <Route path="/costs" element={<CostDashboardPage />} />
       <Route path="/admin/audit" element={<AuditLogPage />} />
       <Route path="/profile" element={<ProfilePage />} />
-      <Route path="*" element={<Navigate to="/services" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }

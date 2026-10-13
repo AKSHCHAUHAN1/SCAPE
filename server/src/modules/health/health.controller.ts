@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
-import { pool } from '../../database/index.js';
+import { pool, query } from '../../database/index.js';
 import { logger } from '../../utils/logger.js';
+
+const SERVER_START_TIME = Date.now();
 
 /**
  * GET /health
@@ -37,4 +39,123 @@ export async function getReady(_req: Request, res: Response): Promise<void> {
     checks,
     timestamp: new Date().toISOString(),
   });
+}
+
+/**
+ * GET /health/metrics  (authenticated)
+ * Extended platform health metrics for the dashboard.
+ * Returns live counts, uptime, queue status, and recent activity.
+ */
+export async function getMetrics(_req: Request, res: Response): Promise<void> {
+  const uptimeMs = Date.now() - SERVER_START_TIME;
+
+  // Parallel queries for platform stats
+  const [
+    servicesRes,
+    activeServicesRes,
+    pendingServicesRes,
+    failedServicesRes,
+    deploymentsRes,
+    recentDeploymentsRes,
+    activeJobsRes,
+    costTotalRes,
+    dbHealthRes,
+  ] = await Promise.allSettled([
+    query('SELECT COUNT(*) AS total FROM services'),
+    query("SELECT COUNT(*) AS total FROM services WHERE status = 'active'"),
+    query("SELECT COUNT(*) AS total FROM services WHERE status IN ('pending','provisioning')"),
+    query("SELECT COUNT(*) AS total FROM services WHERE status = 'failed'"),
+    query("SELECT COUNT(*) AS total FROM deployments"),
+    query(
+      `SELECT d.id, d.status, d.branch, d.commit_sha, d.started_at, d.completed_at, s.name AS service_name
+       FROM deployments d
+       JOIN services s ON s.id = d.service_id
+       ORDER BY d.created_at DESC
+       LIMIT 10`,
+    ),
+    query("SELECT COUNT(*) AS total FROM provisioning_jobs WHERE status IN ('queued','running')"),
+    query('SELECT COALESCE(SUM(amount_usd), 0) AS total FROM cost_records'),
+    pool.query('SELECT 1'),
+  ]);
+
+  const get = (result: PromiseSettledResult<any>, field = 'total') => {
+    if (result.status === 'fulfilled') {
+      const row = result.value?.rows?.[0];
+      return row ? Number(row[field] ?? 0) : 0;
+    }
+    return 0;
+  };
+
+  const recentDeployments =
+    recentDeploymentsRes.status === 'fulfilled'
+      ? recentDeploymentsRes.value.rows.map((d: any) => ({
+          id: d.id,
+          status: d.status,
+          branch: d.branch,
+          commitSha: d.commit_sha,
+          serviceName: d.service_name,
+          startedAt: d.started_at,
+          completedAt: d.completed_at,
+          durationMs:
+            d.started_at && d.completed_at
+              ? new Date(d.completed_at).getTime() - new Date(d.started_at).getTime()
+              : null,
+        }))
+      : [];
+
+  const dbOk = dbHealthRes.status === 'fulfilled';
+
+  // Deployment success rate (last 20)
+  const successRateRes = await query<{ status: string; cnt: string }>(
+    `SELECT status, COUNT(*) AS cnt
+     FROM (SELECT status FROM deployments ORDER BY created_at DESC LIMIT 20) sub
+     GROUP BY status`,
+  ).catch(() => ({ rows: [] as { status: string; cnt: string }[] }));
+
+  const statusCounts: Record<string, number> = {};
+  for (const row of successRateRes.rows) {
+    statusCounts[row.status] = Number(row.cnt);
+  }
+  const totalRecent = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+  const successRate = totalRecent > 0 ? Math.round(((statusCounts['succeeded'] || 0) / totalRecent) * 100) : 100;
+
+  res.json({
+    status: dbOk ? 'healthy' : 'degraded',
+    uptimeMs,
+    uptimeFormatted: formatUptime(uptimeMs),
+    timestamp: new Date().toISOString(),
+    platform: {
+      services: {
+        total: get(servicesRes),
+        active: get(activeServicesRes),
+        pending: get(pendingServicesRes),
+        failed: get(failedServicesRes),
+      },
+      deployments: {
+        total: get(deploymentsRes),
+        activeJobs: get(activeJobsRes),
+        successRate,
+        recentDeployments,
+      },
+      cost: {
+        totalSpendUsd: parseFloat(Number(get(costTotalRes)).toFixed(2)),
+      },
+      infrastructure: {
+        database: dbOk ? 'healthy' : 'unreachable',
+        api: 'healthy',
+        provisioningQueue: get(activeJobsRes) >= 0 ? 'operational' : 'unknown',
+        costSync: 'scheduled',
+      },
+    },
+  });
+}
+
+function formatUptime(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  const h = Math.floor(m / 60);
+  const d = Math.floor(h / 24);
+  if (d > 0) return `${d}d ${h % 24}h`;
+  if (h > 0) return `${h}h ${m % 60}m`;
+  return `${m}m ${s % 60}s`;
 }

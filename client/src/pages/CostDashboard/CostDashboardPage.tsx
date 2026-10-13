@@ -8,21 +8,28 @@ import { useServiceCosts } from '../../hooks/useServiceDetail.js';
 import {
   DollarSign,
   TrendingUp,
+  TrendingDown,
   RotateCw,
   Calendar,
   Sparkles,
   ArrowLeft,
   Server,
+  Trophy,
+  Filter,
 } from 'lucide-react';
 
 export const CostDashboardPage: React.FC = () => {
   const { id: serviceId } = useParams<{ id: string }>();
-
-  // If serviceId is present, we view per-service costs; otherwise aggregate summary
   const isPerService = Boolean(serviceId);
 
-  const { data: serviceCost, isLoading: _sCostLoading, refetch: refetchSCost } = useServiceCosts(serviceId);
-  const { data: summary, isLoading: _sumLoading, refetch: refetchSum } = useCostSummary();
+  const [selectedPeriod, setSelectedPeriod] = useState<string>('');
+
+  const {
+    data: serviceCost,
+    isLoading: sCostLoading,
+    refetch: refetchSCost,
+  } = useServiceCosts(serviceId, selectedPeriod || undefined);
+  const { data: summary, isLoading: sumLoading, refetch: refetchSum } = useCostSummary();
   const triggerSyncMutation = useTriggerCostSync();
 
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
@@ -40,7 +47,7 @@ export const CostDashboardPage: React.FC = () => {
     }
   };
 
-  // Derive charts & table data
+  /* ── Cost data derivations ────────────────────────────────── */
   const monthlyTrend = isPerService
     ? [
         { month: '2026-06', amountUsd: (serviceCost?.totalUsd || 15) * 0.75 },
@@ -75,7 +82,19 @@ export const CostDashboardPage: React.FC = () => {
       ];
 
   const totalCost = isPerService ? serviceCost?.totalUsd || 18.5 : summary?.totalCostUsd || 124.3;
-  const currentMonthCost = isPerService ? (serviceCost?.totalUsd || 18.5) * 0.6 : summary?.monthlyCostUsd || 54.2;
+  const currentMonthCost = isPerService
+    ? (serviceCost?.totalUsd || 18.5) * 0.6
+    : summary?.monthlyCostUsd || 54.2;
+
+  // Month-over-month delta
+  const trend = summary?.monthlyTrend ?? [];
+  const prevMonthCost = trend.length >= 2 ? trend[trend.length - 2].amountUsd : null;
+  const costDelta =
+    prevMonthCost !== null ? currentMonthCost - prevMonthCost : null;
+  const costDeltaPct =
+    prevMonthCost && prevMonthCost > 0
+      ? ((costDelta! / prevMonthCost) * 100).toFixed(1)
+      : null;
 
   const recordsList = isPerService
     ? serviceCost?.records || []
@@ -90,10 +109,17 @@ export const CostDashboardPage: React.FC = () => {
         awsResourceIds: ['ECS-Fargate', 'RDS', 'ALB'],
       }));
 
+  // Admin leaderboard (sorted by totalUsd descending)
+  const leaderboard = !isPerService
+    ? [...(summary?.servicesCosts || [])].sort((a, b) => b.totalUsd - a.totalUsd)
+    : [];
+
+  const isLoading = isPerService ? sCostLoading : sumLoading;
+
   return (
     <Layout>
       <div className="space-y-6 pb-12">
-        {/* Back Link if in Per-Service Mode */}
+        {/* Back Link if per-service mode */}
         {isPerService && (
           <div>
             <Link
@@ -123,6 +149,28 @@ export const CostDashboardPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Period filter for per-service view */}
+            {isPerService && (
+              <div className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border rounded-xl text-xs">
+                <Filter className="w-3.5 h-3.5 text-text-muted" />
+                <input
+                  type="month"
+                  value={selectedPeriod}
+                  onChange={(e) => setSelectedPeriod(e.target.value)}
+                  className="bg-transparent border-none outline-none text-text font-mono text-xs w-36"
+                  placeholder="Filter by month"
+                />
+                {selectedPeriod && (
+                  <button
+                    onClick={() => setSelectedPeriod('')}
+                    className="text-text-muted hover:text-danger transition-colors"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            )}
+
             <button
               onClick={handleSync}
               disabled={triggerSyncMutation.isPending}
@@ -146,9 +194,17 @@ export const CostDashboardPage: React.FC = () => {
           </div>
         )}
 
+        {/* Period filter indicator */}
+        {selectedPeriod && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-xl text-xs text-primary font-semibold w-fit">
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Filtering by: {selectedPeriod}</span>
+          </div>
+        )}
+
         {/* Top Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-4 rounded-2xl bg-surface border border-border shadow-md">
+          <div className="p-4 rounded-2xl bg-surface border border-border shadow-md hover:border-emerald-500/30 transition-colors">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-text-muted">Total Run Cost</span>
               <DollarSign className="w-4 h-4 text-emerald-400" />
@@ -157,13 +213,49 @@ export const CostDashboardPage: React.FC = () => {
             <span className="text-[11px] text-text-muted font-mono">Accumulated USD</span>
           </div>
 
-          <div className="p-4 rounded-2xl bg-surface border border-border shadow-md">
+          <div className="p-4 rounded-2xl bg-surface border border-border shadow-md hover:border-primary/30 transition-colors">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-text-muted">Current Month</span>
               <Calendar className="w-4 h-4 text-primary" />
             </div>
             <p className="text-2xl font-extrabold text-text mt-2">${currentMonthCost.toFixed(2)}</p>
             <span className="text-[11px] text-emerald-400 font-medium">Within budget limits</span>
+          </div>
+
+          {/* Month-over-month delta card */}
+          <div className="p-4 rounded-2xl bg-surface border border-border shadow-md hover:border-secondary/30 transition-colors">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-text-muted">vs Last Month</span>
+              {costDelta !== null && costDelta > 0 ? (
+                <TrendingUp className="w-4 h-4 text-warning" />
+              ) : (
+                <TrendingDown className="w-4 h-4 text-emerald-400" />
+              )}
+            </div>
+            {costDelta !== null ? (
+              <>
+                <p
+                  className={`text-2xl font-extrabold mt-2 ${
+                    costDelta > 0 ? 'text-warning' : 'text-emerald-400'
+                  }`}
+                >
+                  {costDelta >= 0 ? '+' : ''}${costDelta.toFixed(2)}
+                </p>
+                <span
+                  className={`text-[11px] font-medium ${
+                    costDelta > 0 ? 'text-warning' : 'text-emerald-400'
+                  }`}
+                >
+                  {costDelta >= 0 ? '+' : ''}
+                  {costDeltaPct}% month-over-month
+                </span>
+              </>
+            ) : (
+              <>
+                <p className="text-2xl font-extrabold text-text-muted mt-2">—</p>
+                <span className="text-[11px] text-text-muted">No prior month data</span>
+              </>
+            )}
           </div>
 
           <div className="p-4 rounded-2xl bg-surface border border-border shadow-md">
@@ -176,17 +268,6 @@ export const CostDashboardPage: React.FC = () => {
             </p>
             <span className="text-[11px] text-text-muted">Estimated per 24 hours</span>
           </div>
-
-          <div className="p-4 rounded-2xl bg-surface border border-border shadow-md">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-muted">Services Monitored</span>
-              <Server className="w-4 h-4 text-text-secondary" />
-            </div>
-            <p className="text-2xl font-extrabold text-text mt-2">
-              {isPerService ? '1' : summary?.servicesCount || 3}
-            </p>
-            <span className="text-[11px] text-text-muted font-mono">Tagged & Measured</span>
-          </div>
         </div>
 
         {/* Visual Charts */}
@@ -195,6 +276,54 @@ export const CostDashboardPage: React.FC = () => {
           resourceBreakdown={resourceBreakdown}
           currency="USD"
         />
+
+        {/* Admin Cost Leaderboard (non per-service view only) */}
+        {!isPerService && leaderboard.length > 0 && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-warning" />
+              <h3 className="text-base font-bold text-text">Service Cost Leaderboard</h3>
+              <span className="text-[11px] text-text-muted ml-auto font-mono">
+                Sorted by total spend (all-time)
+              </span>
+            </div>
+            <div className="bg-surface border border-border rounded-2xl overflow-hidden">
+              {leaderboard.map((sc, i) => {
+                const maxCost = leaderboard[0].totalUsd || 1;
+                const pct = ((sc.totalUsd / maxCost) * 100).toFixed(0);
+                const rankColors = ['text-warning', 'text-text-secondary', 'text-emerald-600'];
+                return (
+                  <div
+                    key={sc.serviceId}
+                    className={`flex items-center gap-4 px-5 py-3.5 ${
+                      i < leaderboard.length - 1 ? 'border-b border-border/60' : ''
+                    } hover:bg-bg-secondary/40 transition-colors`}
+                  >
+                    <span
+                      className={`text-sm font-extrabold w-6 text-right font-mono ${
+                        rankColors[i] ?? 'text-text-muted'
+                      }`}
+                    >
+                      #{i + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-text truncate">{sc.serviceName}</p>
+                      <div className="mt-1 w-full h-1.5 bg-bg-secondary rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-emerald-400 rounded-full transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-sm font-extrabold text-emerald-400 font-mono whitespace-nowrap">
+                      ${sc.totalUsd.toFixed(2)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Cost Records Breakdown Table */}
         <div className="space-y-3">
@@ -205,61 +334,69 @@ export const CostDashboardPage: React.FC = () => {
             <span className="text-xs text-text-muted font-mono">Sync cadence: Daily at 04:00 UTC</span>
           </div>
 
-          <DataTable
-            data={recordsList}
-            keyExtractor={(r: any) => r.id || r.serviceId}
-            columns={[
-              {
-                key: 'service',
-                header: 'Service / Resource',
-                sortable: true,
-                render: (r: any) => (
-                  <div className="flex items-center gap-2">
-                    <Server className="w-4 h-4 text-primary" />
-                    <span className="font-semibold text-text">
-                      {r.serviceName || `service-${r.serviceId.substring(0, 8)}`}
-                    </span>
-                  </div>
-                ),
-              },
-              {
-                key: 'periodStart',
-                header: 'Billing Period',
-                sortable: true,
-                render: (r: any) => (
-                  <span className="font-mono text-xs text-text-secondary">
-                    {r.periodStart} → {r.periodEnd}
-                  </span>
-                ),
-              },
-              {
-                key: 'amountUsd',
-                header: 'Spend Amount',
-                sortable: true,
-                render: (r: any) => (
-                  <span className="font-bold text-emerald-400 font-mono">
-                    ${Number(r.amountUsd).toFixed(2)} USD
-                  </span>
-                ),
-              },
-              {
-                key: 'awsResourceIds',
-                header: 'Allocated AWS Resources',
-                render: (r: any) => (
-                  <div className="flex flex-wrap gap-1">
-                    {(r.awsResourceIds || []).map((resId: string, idx: number) => (
-                      <span
-                        key={idx}
-                        className="text-[10px] px-2 py-0.5 rounded bg-bg-secondary text-text-muted border border-border"
-                      >
-                        {resId}
+          {isLoading ? (
+            <div className="animate-pulse space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-12 bg-surface border border-border rounded-xl" />
+              ))}
+            </div>
+          ) : (
+            <DataTable
+              data={recordsList}
+              keyExtractor={(r: any) => r.id || r.serviceId}
+              columns={[
+                {
+                  key: 'service',
+                  header: 'Service / Resource',
+                  sortable: true,
+                  render: (r: any) => (
+                    <div className="flex items-center gap-2">
+                      <Server className="w-4 h-4 text-primary" />
+                      <span className="font-semibold text-text">
+                        {r.serviceName || `service-${r.serviceId.substring(0, 8)}`}
                       </span>
-                    ))}
-                  </div>
-                ),
-              },
-            ]}
-          />
+                    </div>
+                  ),
+                },
+                {
+                  key: 'periodStart',
+                  header: 'Billing Period',
+                  sortable: true,
+                  render: (r: any) => (
+                    <span className="font-mono text-xs text-text-secondary">
+                      {r.periodStart} → {r.periodEnd}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'amountUsd',
+                  header: 'Spend Amount',
+                  sortable: true,
+                  render: (r: any) => (
+                    <span className="font-bold text-emerald-400 font-mono">
+                      ${Number(r.amountUsd).toFixed(2)} USD
+                    </span>
+                  ),
+                },
+                {
+                  key: 'awsResourceIds',
+                  header: 'Allocated AWS Resources',
+                  render: (r: any) => (
+                    <div className="flex flex-wrap gap-1">
+                      {(r.awsResourceIds || []).map((resId: string, idx: number) => (
+                        <span
+                          key={idx}
+                          className="text-[10px] px-2 py-0.5 rounded bg-bg-secondary text-text-muted border border-border"
+                        >
+                          {resId}
+                        </span>
+                      ))}
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          )}
         </div>
       </div>
     </Layout>

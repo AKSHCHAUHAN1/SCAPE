@@ -1,8 +1,9 @@
 /**
  * Custom hooks barrel export.
- *
- * Add shared hooks here as the app grows:
- * - useAuth (auth state + guards)
- * - usePolling (provisioning status polling)
- * - useDebounce
  */
+export * from './useHealth.js';
+export * from './useCosts.js';
+export * from './useServices.js';
+export * from './useServiceDetail.js';
+export * from './useAuditLogs.js';
+export * from './useTemplates.js';
