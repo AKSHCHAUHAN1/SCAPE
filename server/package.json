@@ -5,12 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "tsc && node -e \"fs.cpSync('src/database/migrations', 'dist/database/migrations', {recursive: true}); fs.cpSync('src/templates', 'dist/templates', {recursive: true});\"",
     "start": "node dist/server.js",
     "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration": "vitest run --dir tests/integration",
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed": "tsx src/database/seed.ts"
   },

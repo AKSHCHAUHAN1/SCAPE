@@ -23,7 +23,6 @@ import {
   ExternalLink,
   GitCommit,
   Wifi,
-  WifiOff,
   Timer,
 } from 'lucide-react';
 
@@ -132,8 +131,7 @@ export const DashboardPage: React.FC = () => {
   // Recent deployments from metrics
   const recentDeployments = platform?.deployments.recentDeployments ?? [];
 
-  // Active + failed services
-  const activeServices = services.filter((s: any) => s.status === 'active');
+  // Failed services for alert
   const failedServices = services.filter((s: any) => s.status === 'failed');
 
   return (

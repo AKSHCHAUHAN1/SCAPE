@@ -119,22 +119,44 @@ We follow **GitHub Flow**:
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for full guidelines.
 
-## Sprint Plan
+## Sprint Roadmap & Status
 
-| Sprint   | Weeks  | Focus                                     |
-| -------- | ------ | ----------------------------------------- |
-| Sprint 1–2 | 1–4  | Foundation: Auth, DB, Docker, CI pipeline |
-| Sprint 3–4 | 5–8  | Core: Provisioning engine, Terraform, IAM |
-| Sprint 5–6 | 9–12 | Portal: React UI, CI/CD integrator, Cost  |
+| Sprint | Weeks | Focus | Status |
+| :--- | :--- | :--- | :---: |
+| **Sprint 1–2** | 01–04 | Requirement Analysis & Relational Database Schemas | ✅ Done |
+| **Sprint 3–4** | 05–08 | Backend APIs & Terraform Provisioning Engine | ✅ Done |
+| **Sprint 5–6** | 09–12 | Web Portal & Service Request UI | ✅ Done |
+| **Sprint 7–8** | 13–16 | CI/CD Automation & GitHub App Repo Integration | ✅ Done |
+| **Sprint 9–10** | 17–20 | Dashboard: Health Monitoring, Cost & Deployment Feed | ✅ Done |
+| **Sprint 11–12** | 21–24 | Testing (Unit, Integration, E2E), Bug Fixing & Production Deploy (K8s/Docker) | ✅ Done |
+
+## Running Tests
+
+### Client Tests (Unit & Component)
+```bash
+cd client
+npm test        # Run Vitest test suite
+npm run lint    # Run ESLint
+npm run build   # Production bundle verification
+```
+
+### Server Tests (Unit & Integration)
+```bash
+cd server
+npm test               # Run all 96 unit and integration tests
+npm run test:integration # Run API integration tests
+npm run lint           # Run ESLint
+npm run build          # Build TypeScript and copy migration/template assets
+```
 
 ## Team
 
-| Role                       | Member |
-| -------------------------- | ------ |
-| Frontend Developer         | TBD    |
-| Backend Developer          | TBD    |
-| DevOps / Cloud Engineer    | TBD    |
-| Database / Integration Eng | TBD    |
+| Role | Member |
+| :--- | :--- |
+| **Project Lead & Systems Architect** | Aksh Chauhan |
+| **Database & Integration Engineer** | Prince Singhalia |
+| **Frontend Developer** | Mohd. Anas |
+| **DevOps & Cloud Engineer** | Vijay Kumar Mishra |
 
 ## License
 

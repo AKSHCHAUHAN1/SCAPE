@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: scape-prod
+
+bases:
+  - ../../base
+
+namePrefix: prod-
+
+patches:
+  - target:
+      kind: Deployment
+      name: scape-server
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+  - target:
+      kind: Deployment
+      name: scape-client
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+  - target:
+      kind: Deployment
+      name: scape-worker
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+  - target:
+      kind: Ingress
+      name: scape-ingress
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: app.scape.internal

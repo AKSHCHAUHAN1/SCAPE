@@ -34,8 +34,8 @@ export const ServiceDetailPage: React.FC = () => {
   const navigate = useNavigate();
 
   const { data: service, isLoading: serviceLoading, error: serviceError } = useService(id);
-  const { data: jobs = [], isLoading: _jobsLoading } = useServiceJobs(id);
-  const { data: deployments = [], isLoading: _deploymentsLoading } = useServiceDeployments(id);
+  const { data: jobs = [] } = useServiceJobs(id);
+  const { data: deployments = [] } = useServiceDeployments(id);
 
   const createDeploymentMutation = useCreateDeployment();
   const retryJobMutation = useRetryProvisioningJob();

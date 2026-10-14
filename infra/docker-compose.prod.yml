@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: scape-postgres-prod
+    environment:
+      POSTGRES_DB: scape
+      POSTGRES_USER: scape_user
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scape_user -d scape"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: scape-redis-prod
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  server:
+    build:
+      context: ../server
+      dockerfile: ../infra/docker/Dockerfile.server
+      target: production
+    container_name: scape-server-prod
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: scape
+      POSTGRES_USER: scape_user
+      POSTGRES_PASSWORD: changeme
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_ACCESS_SECRET: prod-jwt-access-secret-replace-in-env
+      JWT_REFRESH_SECRET: prod-jwt-refresh-secret-replace-in-env
+      CORS_ORIGIN: "http://localhost:80,http://localhost"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  client:
+    build:
+      context: ../client
+      dockerfile: ../infra/docker/Dockerfile.client
+      target: production
+    container_name: scape-client-prod
+    ports:
+      - "80:80"
+    depends_on:
+      - server
+    restart: always
+
+volumes:
+  postgres_data_prod:
+  redis_data_prod:

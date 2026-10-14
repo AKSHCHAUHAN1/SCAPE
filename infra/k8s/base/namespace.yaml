@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: scape
+  labels:
+    app.kubernetes.io/name: scape
+    app.kubernetes.io/part-of: scape-platform

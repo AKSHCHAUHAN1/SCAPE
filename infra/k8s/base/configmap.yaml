@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scape-config
+  namespace: scape
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  POSTGRES_HOST: "scape-postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "scape"
+  POSTGRES_USER: "scape_user"
+  REDIS_HOST: "scape-redis"
+  REDIS_PORT: "6379"
+  AWS_REGION: "ap-south-1"
+  TF_STATE_BUCKET: "scape-tf-state-prod"
+  TF_LOCK_TABLE: "scape-tf-locks-prod"
+  TF_APPLY_TIMEOUT_MS: "600000"
+  TF_DESTROY_TIMEOUT_MS: "300000"
+  CORS_ORIGIN: "https://scape.internal,http://localhost"
