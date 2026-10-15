@@ -6,7 +6,7 @@ import * as auditService from './audit.service.js';
  */
 export async function getAll(req: Request, res: Response, next: NextFunction) {
   try {
-    const resourceId = req.query.resourceId as string | undefined;
+    const resourceId = (req.query.resource_id || req.query.resourceId) as string | undefined;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 

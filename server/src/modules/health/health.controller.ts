@@ -159,3 +159,73 @@ function formatUptime(ms: number): string {
   if (h > 0) return `${h}h ${m % 60}m`;
   return `${m}m ${s % 60}s`;
 }
+
+/**
+ * GET /metrics
+ * Prometheus text exposition format (version 0.0.4) for scraper integration.
+ * Spec: 05-Backend-API, 11-Testing-and-Deployment, 14-Forge-Master-Instructions.
+ */
+export async function getPrometheusMetrics(_req: Request, res: Response): Promise<void> {
+  const uptimeSeconds = (Date.now() - SERVER_START_TIME) / 1000;
+
+  try {
+    const [servicesByStatus, jobsByStatus, deploymentsByStatus, costRes] = await Promise.allSettled([
+      query<{ status: string; count: string }>('SELECT status, COUNT(*) AS count FROM services GROUP BY status'),
+      query<{ status: string; count: string }>('SELECT status, COUNT(*) AS count FROM provisioning_jobs GROUP BY status'),
+      query<{ status: string; count: string }>('SELECT status, COUNT(*) AS count FROM deployments GROUP BY status'),
+      query<{ total: string }>('SELECT COALESCE(SUM(amount_usd), 0) AS total FROM cost_records'),
+    ]);
+
+    const lines: string[] = [
+      '# HELP forge_uptime_seconds Total time the server has been running in seconds',
+      '# TYPE forge_uptime_seconds gauge',
+      `forge_uptime_seconds ${uptimeSeconds.toFixed(2)}`,
+      '',
+      '# HELP forge_services_total Total count of registered services by status',
+      '# TYPE forge_services_total gauge',
+    ];
+
+    if (servicesByStatus.status === 'fulfilled') {
+      for (const row of servicesByStatus.value.rows) {
+        lines.push(`forge_services_total{status="${row.status}"} ${row.count}`);
+      }
+    }
+
+    lines.push(
+      '',
+      '# HELP forge_provisioning_jobs_total Total count of provisioning jobs by status',
+      '# TYPE forge_provisioning_jobs_total gauge',
+    );
+    if (jobsByStatus.status === 'fulfilled') {
+      for (const row of jobsByStatus.value.rows) {
+        lines.push(`forge_provisioning_jobs_total{status="${row.status}"} ${row.count}`);
+      }
+    }
+
+    lines.push(
+      '',
+      '# HELP forge_deployments_total Total count of deployments by status',
+      '# TYPE forge_deployments_total gauge',
+    );
+    if (deploymentsByStatus.status === 'fulfilled') {
+      for (const row of deploymentsByStatus.value.rows) {
+        lines.push(`forge_deployments_total{status="${row.status}"} ${row.count}`);
+      }
+    }
+
+    lines.push(
+      '',
+      '# HELP forge_cost_total_usd Total aggregated cloud infrastructure spend in USD',
+      '# TYPE forge_cost_total_usd gauge',
+    );
+    const totalCost = costRes.status === 'fulfilled' ? Number(costRes.value.rows[0]?.total ?? 0) : 0;
+    lines.push(`forge_cost_total_usd ${totalCost.toFixed(2)}`, '');
+
+    res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+    res.send(lines.join('\n'));
+  } catch (err) {
+    logger.error({ err }, 'Error collecting prometheus metrics');
+    res.status(500).send('# Error collecting metrics\n');
+  }
+}
+

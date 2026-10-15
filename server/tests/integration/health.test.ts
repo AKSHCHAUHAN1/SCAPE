@@ -39,4 +39,17 @@ describe('Health Endpoints - Integration Tests', () => {
 
     poolSpy.mockRestore();
   });
+
+
+  it('GET /metrics should return 200 with Prometheus exposition format', async () => {
+    const res = await request(app).get('/metrics');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/plain');
+    expect(res.text).toContain('# HELP forge_uptime_seconds');
+    expect(res.text).toContain('# HELP forge_services_total');
+    expect(res.text).toContain('# HELP forge_provisioning_jobs_total');
+  });
 });
+
+

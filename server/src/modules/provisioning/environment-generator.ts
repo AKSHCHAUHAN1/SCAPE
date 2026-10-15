@@ -120,6 +120,13 @@ function generateTfVarsJson(cfg: EnvironmentConfig): string {
 // Public API
 // ---------------------------------------------------------------------------
 
+export function getProjectRoot(): string {
+  if (path.basename(process.cwd()) === 'server') {
+    return path.resolve(process.cwd(), '..');
+  }
+  return process.cwd();
+}
+
 /**
  * Generate the environment directory for a service.
  * Creates `terraform/environments/<service-id>/` with all required files.
@@ -128,7 +135,7 @@ function generateTfVarsJson(cfg: EnvironmentConfig): string {
  */
 export async function generateEnvironment(cfg: EnvironmentConfig): Promise<string> {
   // Resolve the environments directory relative to project root
-  const projectRoot = path.resolve(process.cwd(), '..');
+  const projectRoot = getProjectRoot();
   const envDir = path.join(projectRoot, 'terraform', 'environments', cfg.serviceId);
 
   logger.info(
@@ -158,7 +165,7 @@ export async function generateEnvironment(cfg: EnvironmentConfig): Promise<strin
  * Clean up the environment directory for a service (after destroy / decommission).
  */
 export async function cleanupEnvironment(serviceId: string): Promise<void> {
-  const projectRoot = path.resolve(process.cwd(), '..');
+  const projectRoot = getProjectRoot();
   const envDir = path.join(projectRoot, 'terraform', 'environments', serviceId);
 
   try {
@@ -176,7 +183,7 @@ export async function cleanupEnvironment(serviceId: string): Promise<void> {
  * Check if an environment directory already exists for a service.
  */
 export async function environmentExists(serviceId: string): Promise<boolean> {
-  const projectRoot = path.resolve(process.cwd(), '..');
+  const projectRoot = getProjectRoot();
   const envDir = path.join(projectRoot, 'terraform', 'environments', serviceId);
 
   try {

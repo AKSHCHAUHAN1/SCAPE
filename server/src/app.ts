@@ -37,21 +37,26 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(requestLogger);
 
-// ---- Routes ----
+import { getPrometheusMetrics } from './modules/health/health.controller.js';
+
+// ---- Observability & Health Probes (Unthrottled) ----
 app.use('/health', healthRoutes);
-app.use('/auth', rateLimiter, authRoutes);
-app.use('/users', userRoutes);
-app.use('/teams', teamRoutes);
-app.use('/templates', templateRoutes);
-app.use('/services', serviceRoutes);
-app.use('/services', serviceJobRoutes); // GET /services/:serviceId/jobs
-app.use('/services', serviceDeploymentRoutes); // GET /services/:serviceId/deployments
-app.use('/services', serviceCostRoutes); // GET /services/:serviceId/costs
-app.use('/jobs', provisioningRoutes);
-app.use('/deployments', deploymentRoutes);
-app.use('/costs', costRoutes);
-app.use('/audit-logs', auditRoutes);
+app.get('/metrics', getPrometheusMetrics);
 app.use('/webhooks', webhookRoutes);
+
+// ---- API Routes (Protected by Rate Limiter) ----
+app.use('/auth', rateLimiter, authRoutes);
+app.use('/users', rateLimiter, userRoutes);
+app.use('/teams', rateLimiter, teamRoutes);
+app.use('/templates', rateLimiter, templateRoutes);
+app.use('/services', rateLimiter, serviceRoutes);
+app.use('/services', rateLimiter, serviceJobRoutes); // GET /services/:serviceId/jobs
+app.use('/services', rateLimiter, serviceDeploymentRoutes); // GET /services/:serviceId/deployments
+app.use('/services', rateLimiter, serviceCostRoutes); // GET /services/:serviceId/costs
+app.use('/jobs', rateLimiter, provisioningRoutes);
+app.use('/deployments', rateLimiter, deploymentRoutes);
+app.use('/costs', rateLimiter, costRoutes);
+app.use('/audit-logs', rateLimiter, auditRoutes);
 
 // ---- Error Handling ----
 app.use(errorHandler);

@@ -51,15 +51,17 @@ export interface TerraformRunOptions {
 // Terraform Runner Class
 // ---------------------------------------------------------------------------
 
+import { getProjectRoot } from './environment-generator.js';
+
 export class TerraformRunner {
   private moduleDir: string;
 
   constructor(modulePath: string) {
     // Determine absolute path to the terraform module.
-    // The module_path in DB is like 'terraform/modules/nodejs-api'
-    // We assume the root of the project is two levels up from server/src
-    this.moduleDir = path.resolve(process.cwd(), '..', modulePath);
+    // Works whether executed from server/ or project root.
+    this.moduleDir = path.resolve(getProjectRoot(), modulePath);
   }
+
 
   /**
    * Run terraform init, workspace select, and apply.

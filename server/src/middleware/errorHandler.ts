@@ -22,11 +22,19 @@ export class AppError extends Error {
  */
 export function errorHandler(
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ): void {
+  const correlationId = (req.headers['x-correlation-id'] as string) || undefined;
+
   if (err instanceof AppError) {
+    if (err.statusCode >= 500) {
+      logger.error({ err, correlationId, code: err.code }, 'Server error in request');
+    } else {
+      logger.warn({ correlationId, code: err.code, statusCode: err.statusCode, message: err.message }, 'Client error in request');
+    }
+
     res.status(err.statusCode).json({
       code: err.code,
       message: err.message,
@@ -36,9 +44,10 @@ export function errorHandler(
   }
 
   // Unexpected errors
-  logger.error({ err }, 'Unhandled error');
+  logger.error({ err, correlationId }, 'Unhandled server error');
   res.status(500).json({
     code: 'INTERNAL_ERROR',
     message: 'An unexpected error occurred',
   });
 }
+
