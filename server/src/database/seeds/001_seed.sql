@@ -61,7 +61,7 @@ INSERT INTO service_templates (id, name, description, cloud_provider, resource_t
   (
     'c1d2e3f4-0002-4000-8000-000000000002',
     'Static Frontend',
-    'Static website hosted on S3 with CloudFront CDN and ACM TLS certificate. Ideal for React, Vue, or plain HTML sites.',
+    'Static website hosted on a private S3 bucket and served through CloudFront. Ideal for React, Vue, or plain HTML sites.',
     'aws',
     '["S3", "CloudFront", "ACM"]'::JSONB,
     'terraform/modules/static-frontend',

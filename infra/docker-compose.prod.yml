@@ -49,8 +49,8 @@ services:
       POSTGRES_PASSWORD: changeme
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      JWT_ACCESS_SECRET: prod-jwt-access-secret-replace-in-env
-      JWT_REFRESH_SECRET: prod-jwt-refresh-secret-replace-in-env
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY:?Set JWT_PRIVATE_KEY in the deployment environment}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:?Set JWT_PUBLIC_KEY in the deployment environment}
       CORS_ORIGIN: "http://localhost:80,http://localhost"
     depends_on:
       postgres:

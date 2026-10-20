@@ -39,6 +39,7 @@ export interface CicdIntegrationPayload {
   serviceId: string;
   serviceName: string;
   templateId: string;
+  templateType: ServiceTemplateType;
   repositoryUrl: string;
   region: string;
   terraformOutputs: Record<string, TerraformOutput>;
@@ -63,6 +64,7 @@ export class CicdIntegrator {
       serviceId,
       serviceName,
       templateId,
+      templateType,
       repositoryUrl,
       region,
       terraformOutputs,
@@ -81,16 +83,19 @@ export class CicdIntegrator {
       return result;
     }
 
-    // ── 1. Determine template type ──
-    const templateType: ServiceTemplateType = templateId.includes('static')
-      ? 'static-frontend'
-      : 'nodejs-api';
+    const awsRoleArn = terraformOutputs.deploy_role_arn?.value;
+    if (!awsRoleArn) {
+      result.errors.push('AWS GitHub Actions OIDC deploy role ARN is not configured');
+      return result;
+    }
 
+    // ── 1. Determine template type ──
     // ── 2. Render workflow YAML ──
     const workflowData = this.extractWorkflowData(
       templateType,
       serviceName,
       region,
+      String(awsRoleArn),
       terraformOutputs,
     );
 
@@ -103,9 +108,57 @@ export class CicdIntegrator {
       'Workflow YAML rendered',
     );
 
-    // ── 3. Commit workflow file ──
     const filePath = '.github/workflows/deploy.yml';
 
+    // Record the first run before installing the workflow and enabling its webhook.
+    try {
+      const deploymentResult = await query(
+        `INSERT INTO deployments
+           (service_id, triggered_by, status, branch, workflow_content_hash, workflow_file_path, started_at)
+         VALUES ($1, (SELECT owner_id FROM services WHERE id = $1), 'pending', 'main', $2, $3, NULL)
+         RETURNING id`,
+        [serviceId, workflowContentHash, filePath],
+      );
+      result.deploymentRecordId = deploymentResult.rows[0]?.id;
+    } catch (err: any) {
+      logger.error({ err: err.message, serviceId }, 'Failed to create deployment record');
+      result.errors.push(`Deployment record creation failed: ${err.message}`);
+      return result;
+    }
+
+    // ── 3. Register webhook before committing the push-triggered workflow ──
+    try {
+      const webhookUrl = this.getWebhookUrl();
+      const webhookSecret = config.github.webhookSecret;
+
+      if (webhookUrl && webhookSecret) {
+        const webhookResult = await this.github.registerWebhook({
+          repoUrl: repositoryUrl,
+          webhookUrl,
+          secret: webhookSecret,
+          events: ['workflow_run', 'push'],
+        });
+
+        result.webhookRegistered = webhookResult.success;
+        result.webhookId = webhookResult.hookId;
+        if (!webhookResult.success) {
+          result.errors.push(`Webhook registration failed: ${webhookResult.message}`);
+        }
+      } else {
+        logger.info({ serviceId }, 'Webhook URL or secret not configured');
+        result.errors.push('Webhook URL or secret not configured');
+      }
+    } catch (err: any) {
+      logger.error({ err: err.message, serviceId }, 'Failed to register webhook');
+      result.errors.push(`Webhook registration exception: ${err.message}`);
+    }
+
+    if (!result.webhookRegistered) {
+      await query(`UPDATE deployments SET status = 'failed', completed_at = NOW() WHERE id = $1`, [result.deploymentRecordId]);
+      return result;
+    }
+
+    // ── 4. Commit the workflow file ──
     try {
       const commitResult = await this.github.commitWorkflowFile({
         repoUrl: repositoryUrl,
@@ -125,57 +178,18 @@ export class CicdIntegrator {
       result.errors.push(`Workflow commit exception: ${err.message}`);
     }
 
-    // ── 4. Register webhook ──
-    try {
-      const webhookUrl = this.getWebhookUrl();
-      const webhookSecret = config.github.webhookSecret;
-
-      if (webhookUrl && webhookSecret) {
-        const webhookResult = await this.github.registerWebhook({
-          repoUrl: repositoryUrl,
-          webhookUrl,
-          secret: webhookSecret,
-          events: ['workflow_run', 'push'],
-        });
-
-        result.webhookRegistered = webhookResult.success;
-        result.webhookId = webhookResult.hookId;
-
-        if (!webhookResult.success) {
-          result.errors.push(`Webhook registration failed: ${webhookResult.message}`);
-        }
-      } else {
-        logger.info(
-          { serviceId },
-          'Webhook URL or secret not configured — skipping webhook registration',
-        );
-        result.errors.push('Webhook URL or secret not configured');
-      }
-    } catch (err: any) {
-      logger.error({ err: err.message, serviceId }, 'Failed to register webhook');
-      result.errors.push(`Webhook registration exception: ${err.message}`);
+    if (!result.workflowCommitted) {
+      await query(`UPDATE deployments SET status = 'failed', completed_at = NOW() WHERE id = $1`, [result.deploymentRecordId]);
     }
 
-    // ── 5. Create deployment record ──
     try {
-      const deploymentResult = await query(
-        `INSERT INTO deployments
-           (service_id, triggered_by, status, branch, workflow_content_hash, workflow_file_path, started_at)
-         VALUES ($1, (SELECT owner_id FROM services WHERE id = $1), 'pending', 'main', $2, $3, NOW())
-         RETURNING id`,
-        [serviceId, workflowContentHash, filePath],
-      );
-
-      if (deploymentResult.rows.length > 0) {
-        result.deploymentRecordId = deploymentResult.rows[0].id;
-      }
-
       await logAction({
         actorId: 'system',
         action: 'cicd.integrated',
         resourceType: 'service',
         resourceId: serviceId,
         payload: {
+          templateId,
           templateType,
           workflowCommitted: result.workflowCommitted,
           webhookRegistered: result.webhookRegistered,
@@ -183,8 +197,8 @@ export class CicdIntegrator {
         },
       });
     } catch (err: any) {
-      logger.error({ err: err.message, serviceId }, 'Failed to create deployment record');
-      result.errors.push(`Deployment record creation failed: ${err.message}`);
+      logger.error({ err: err.message, serviceId }, 'Failed to write CI/CD audit event');
+      result.errors.push(`CI/CD audit event failed: ${err.message}`);
     }
 
     logger.info(
@@ -211,18 +225,19 @@ export class CicdIntegrator {
     templateType: ServiceTemplateType,
     serviceName: string,
     region: string,
+    awsRoleArn: string,
     outputs: Record<string, TerraformOutput>,
   ) {
     const baseData = {
       serviceName,
       awsRegion: region,
-      awsRoleArn: outputs.deploy_role_arn?.value || '',
+      awsRoleArn,
     };
 
     if (templateType === 'nodejs-api') {
       return {
         ...baseData,
-        ecrRepository: outputs.ecr_repository_url?.value || outputs.repository_url?.value || '',
+        ecrRepository: String(outputs.ecr_repository_url?.value || outputs.repository_url?.value || '').split('/').at(-1) || '',
         ecsCluster: outputs.ecs_cluster_name?.value || '',
         ecsService: outputs.ecs_service_name?.value || '',
         taskDefinition: outputs.ecs_task_definition_family?.value || '',

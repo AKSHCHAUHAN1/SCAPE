@@ -168,11 +168,12 @@ async function handleWorkflowRunEvent(
   }
 
   // Find matching service by repository URL or name
+  const repositoryUrl = repository.html_url || `https://github.com/${repository.full_name}`;
   const serviceRes = await query(
     `SELECT id, owner_id FROM services
-     WHERE repository_url ILIKE $1 OR repository_url ILIKE $2
+     WHERE LOWER(repository_url) = LOWER($1) OR LOWER(repository_url) = LOWER($2)
      LIMIT 1`,
-    [`%${repository.full_name}%`, `%${repository.name}%`],
+    [repositoryUrl, `${repositoryUrl}.git`],
   );
 
   if (!serviceRes.rowCount || serviceRes.rowCount === 0) {
@@ -202,13 +203,29 @@ async function handleWorkflowRunEvent(
       [deploymentStatus, runId, commitSha],
     );
   } else {
-    // Create new deployment record
-    await query(
-      `INSERT INTO deployments
-         (service_id, triggered_by, github_run_id, status, commit_sha, branch, started_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-      [service.id, service.owner_id, runId, deploymentStatus, commitSha, branch],
+    const pending = await query(
+      `SELECT id FROM deployments
+       WHERE service_id = $1 AND branch = $2 AND status = 'pending' AND github_run_id IS NULL
+       ORDER BY created_at DESC LIMIT 1`,
+      [service.id, branch],
     );
+    if (pending.rowCount) {
+      await query(
+        `UPDATE deployments
+         SET github_run_id = $1, status = $2, commit_sha = COALESCE($3, commit_sha),
+             started_at = CASE WHEN $2 = 'running' THEN NOW() ELSE started_at END,
+             completed_at = CASE WHEN $2 IN ('succeeded', 'failed') THEN NOW() ELSE completed_at END
+         WHERE id = $4`,
+        [runId, deploymentStatus, commitSha, pending.rows[0].id],
+      );
+    } else {
+      await query(
+        `INSERT INTO deployments
+           (service_id, triggered_by, github_run_id, status, commit_sha, branch, started_at)
+         VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'running' THEN NOW() ELSE NULL END)`,
+        [service.id, service.owner_id, runId, deploymentStatus, commitSha, branch],
+      );
+    }
   }
 
   await logAction({

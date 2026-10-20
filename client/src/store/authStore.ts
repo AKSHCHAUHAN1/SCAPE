@@ -4,7 +4,7 @@ interface User {
   id: string;
   email: string;
   role: 'developer' | 'team_lead' | 'devops' | 'admin';
-  teamId: string;
+  teamId: string | null;
 }
 
 interface AuthState {

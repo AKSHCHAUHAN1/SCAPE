@@ -13,15 +13,7 @@ export const registerSchema = z.object({
       /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
       'Password must contain at least one uppercase letter, one lowercase letter, and one number',
     ),
-  role: z
-    .enum(['developer', 'team_lead', 'devops', 'admin'])
-    .optional()
-    .default('developer'),
-  teamId: z
-    .string()
-    .uuid('Invalid team ID')
-    .optional(),
-});
+}).strict();
 
 export const loginSchema = z.object({
   email: z

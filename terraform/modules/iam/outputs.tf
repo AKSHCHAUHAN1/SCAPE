@@ -3,9 +3,9 @@ output "provisioning_role_arn" {
   value       = aws_iam_role.provisioning.arn
 }
 
-output "deploy_role_arn" {
-  description = "ARN of the IAM role to be assumed by GitHub Actions for deployment"
-  value       = aws_iam_role.deploy.arn
+output "github_oidc_provider_arn" {
+  description = "GitHub Actions OIDC provider used by repository-scoped service deploy roles"
+  value       = aws_iam_openid_connect_provider.github.arn
 }
 
 output "cost_explorer_role_arn" {

@@ -25,12 +25,13 @@ import { logger } from '../../utils/logger.js';
 import { logAction } from '../audit/audit.service.js';
 import { TerraformRunner } from './terraform-runner.js';
 import { executeRollback } from './rollback-coordinator.js';
-import { generateEnvironment } from './environment-generator.js';
+import { cleanupEnvironment, generateEnvironment } from './environment-generator.js';
 import { getStateBackendConfig } from './state-manager.js';
 import { sanitizeTerraformLogs } from './log-sanitizer.js';
 import { CicdIntegrator } from '../cicd/cicd-integrator.js';
+import { GitHubIntegrator } from '../cicd/github-client.js';
 import type { ProvisioningJobData } from './types.js';
-import { APPLY_TIMEOUT_MS } from './types.js';
+import { APPLY_TIMEOUT_MS, DESTROY_TIMEOUT_MS } from './types.js';
 
 const stsClient = new STSClient({ region: config.aws.region });
 
@@ -88,13 +89,19 @@ async function updateServiceStatus(
   serviceId: string,
   status: string,
   repositoryUrl?: string,
+  serviceEndpoint?: string,
 ) {
   let q = 'UPDATE services SET status = $2, updated_at = NOW()';
   const values: unknown[] = [serviceId, status];
+  let nextParam = 3;
 
   if (repositoryUrl) {
-    q += ', repository_url = $3';
+    q += `, repository_url = $${nextParam++}`;
     values.push(repositoryUrl);
+  }
+  if (serviceEndpoint) {
+    q += `, service_endpoint = $${nextParam++}`;
+    values.push(serviceEndpoint);
   }
 
   q += ' WHERE id = $1';
@@ -105,11 +112,16 @@ async function updateServiceStatus(
 // STS Credential Helper
 // ---------------------------------------------------------------------------
 
-async function assumeProvisioningRole(serviceId: string) {
+async function assumeProvisioningRole(serviceId: string, teamId: string) {
   const command = new AssumeRoleCommand({
     RoleArn: config.aws.provisioningRoleArn,
     RoleSessionName: `scape-provision-${serviceId.slice(0, 20)}`,
     DurationSeconds: 3600, // 1 hour
+    ExternalId: `scape-service-${serviceId}`,
+    Tags: [
+      { Key: 'forge:service-id', Value: serviceId },
+      { Key: 'forge:team-id', Value: teamId },
+    ],
   });
 
   const response = await stsClient.send(command);
@@ -129,7 +141,57 @@ async function assumeProvisioningRole(serviceId: string) {
 // Worker Definition
 // ---------------------------------------------------------------------------
 
+async function processDecommissionJob(job: Job<ProvisioningJobData>) {
+  const { jobId, serviceId, serviceName, repositoryUrl, triggeredBy } = job.data;
+  logger.info({ jobId, serviceId }, 'Starting service decommission job');
+  await updateJobStatus(jobId, 'running');
+  await updateServiceStatus(serviceId, 'decommissioning');
+
+  try {
+    const awsEnv: NodeJS.ProcessEnv = config.aws.provisioningRoleArn
+      ? (await assumeProvisioningRole(serviceId, job.data.teamId)) as unknown as NodeJS.ProcessEnv
+      : {};
+    const runner = new TerraformRunner(`terraform/environments/${serviceId}`);
+    const result = await runner.destroy(serviceId, awsEnv, { timeoutMs: DESTROY_TIMEOUT_MS });
+    const sanitizedLogs = result.logs ? sanitizeTerraformLogs(result.logs) : undefined;
+
+    if (!result.success) {
+      throw new Error(result.error || 'Terraform destroy failed');
+    }
+
+    if (repositoryUrl) {
+      await new GitHubIntegrator().archiveRepository(repositoryUrl);
+    }
+    await cleanupEnvironment(serviceId);
+    await updateJobStatus(jobId, 'succeeded', { terraformLogs: sanitizedLogs });
+    await updateServiceStatus(serviceId, 'decommissioned');
+    await logAction({
+      actorId: triggeredBy,
+      action: 'service.decommissioned',
+      resourceType: 'service',
+      resourceId: serviceId,
+      payload: { serviceName, durationMs: result.durationMs },
+    });
+    logger.info({ jobId, serviceId }, 'Service decommission completed');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Service decommission failed';
+    await updateJobStatus(jobId, 'failed', { errorMessage: message });
+    await updateServiceStatus(serviceId, 'failed');
+    await logAction({
+      actorId: triggeredBy,
+      action: 'service.decommission_failed',
+      resourceType: 'service',
+      resourceId: serviceId,
+      payload: { error: message },
+    });
+    logger.error({ err: message, jobId, serviceId }, 'Service decommission failed');
+    throw err;
+  }
+}
+
 export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
+  if (job.name === 'decommission') return processDecommissionJob(job);
+
   const {
       jobId,
       serviceId,
@@ -137,6 +199,7 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
       templateId,
       terraformModulePath,
       region,
+      environment = config.nodeEnv,
       teamId,
       triggeredBy,
     } = job.data;
@@ -150,9 +213,20 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
     await updateServiceStatus(serviceId, 'provisioning');
 
     try {
+      const templateType = terraformModulePath.includes('static-frontend')
+        ? 'static-frontend'
+        : 'nodejs-api';
+      const github = new GitHubIntegrator();
+      const sourceRepository = await github.createRepositoryFromTemplate({
+        serviceId,
+        serviceName,
+        templateType,
+      });
+      await updateServiceStatus(serviceId, 'provisioning', sourceRepository.htmlUrl);
+
       // ── 1. Assume IAM Role ──
       const awsEnv: NodeJS.ProcessEnv = config.aws.provisioningRoleArn
-        ? (await assumeProvisioningRole(serviceId)) as unknown as NodeJS.ProcessEnv
+        ? (await assumeProvisioningRole(serviceId, teamId)) as unknown as NodeJS.ProcessEnv
         : {};
 
       // ── 2. Generate per-service environment directory ──
@@ -162,12 +236,15 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
         serviceName,
         modulePath: terraformModulePath,
         region,
-        environment: config.nodeEnv,
+        environment,
         ownerTeam: teamId,
+        githubRepository: sourceRepository.fullName,
         tags: {
+          'forge:service-id': serviceId,
+          'forge:team-id': teamId,
+          'forge:template-id': templateId,
+          Environment: environment,
           ManagedBy: 'scape',
-          ServiceId: serviceId,
-          TeamId: teamId,
         },
         stateBackend,
       });
@@ -185,12 +262,14 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
         service_name: serviceName,
         service_id: serviceId,
         region,
-        environment: config.nodeEnv,
+        environment,
         owner_team: teamId,
         tags: {
+          'forge:service-id': serviceId,
+          'forge:team-id': teamId,
+          'forge:template-id': templateId,
+          Environment: environment,
           ManagedBy: 'scape',
-          ServiceId: serviceId,
-          TeamId: teamId,
         },
       };
 
@@ -207,32 +286,36 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
       if (result.success) {
         // ── Apply succeeded ──
         const outputs = result.outputs || {};
-        const repositoryUrl = outputs.repository_url?.value;
+        const repositoryUrl = sourceRepository.htmlUrl;
         const serviceEndpoint = outputs.service_endpoint?.value;
 
-        await updateJobStatus(jobId, 'succeeded', {
-          terraformLogs: sanitizedLogs,
-        });
-        await updateServiceStatus(serviceId, 'active', repositoryUrl);
-
         // ── 6. CI/CD Integration ──
-        try {
-          const cicd = new CicdIntegrator();
-          await cicd.integrate({
+        const cicd = new CicdIntegrator();
+        const integration = await cicd.integrate({
+          serviceId,
+          serviceName,
+          templateId,
+          templateType,
+          repositoryUrl,
+          region,
+          terraformOutputs: outputs,
+        });
+        if (!integration.workflowCommitted || !integration.webhookRegistered) {
+          const reason = integration.errors.join('; ') || 'GitHub workflow or webhook setup failed';
+          await executeRollback({
+            jobId,
             serviceId,
-            serviceName,
-            templateId,
-            repositoryUrl: repositoryUrl || '',
-            region,
-            terraformOutputs: outputs,
+            workspace: serviceId,
+            modulePath: `terraform/environments/${serviceId}`,
+            awsEnv,
+            applyError: reason,
+            triggeredBy,
           });
-        } catch (cicdErr: any) {
-          // CI/CD failure should not fail the provisioning job
-          logger.warn(
-            { cicdErr: cicdErr.message, serviceId },
-            'CI/CD workflow integration warning — provisioning still succeeded',
-          );
+          throw new Error(`CI/CD setup failed: ${reason}`);
         }
+
+        await updateJobStatus(jobId, 'succeeded', { terraformLogs: sanitizedLogs });
+        await updateServiceStatus(serviceId, 'active', repositoryUrl, serviceEndpoint);
 
         await logAction({
           actorId: triggeredBy,

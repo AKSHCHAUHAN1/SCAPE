@@ -7,6 +7,7 @@ import { DataTable } from '../../components/data-display/DataTable.js';
 import { EmptyState } from '../../components/ui/EmptyState.js';
 import {
   useService,
+  useServiceHealth,
   useServiceJobs,
   useServiceDeployments,
   useCreateDeployment,
@@ -34,6 +35,7 @@ export const ServiceDetailPage: React.FC = () => {
   const navigate = useNavigate();
 
   const { data: service, isLoading: serviceLoading, error: serviceError } = useService(id);
+  const { data: serviceHealth, isLoading: healthLoading } = useServiceHealth(id);
   const { data: jobs = [] } = useServiceJobs(id);
   const { data: deployments = [] } = useServiceDeployments(id);
 
@@ -43,8 +45,6 @@ export const ServiceDetailPage: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'overview' | 'deployments' | 'jobs' | 'config'>('overview');
   const [showDeployModal, setShowDeployModal] = useState(false);
-  const [deployBranch, setDeployBranch] = useState('main');
-  const [deployCommitSha, setDeployCommitSha] = useState('');
   const [showDecommissionModal, setShowDecommissionModal] = useState(false);
 
   // Latest job
@@ -56,8 +56,7 @@ export const ServiceDetailPage: React.FC = () => {
     try {
       await createDeploymentMutation.mutateAsync({
         serviceId: id,
-        branch: deployBranch,
-        commitSha: deployCommitSha || 'a1b2c3d',
+        branch: 'main',
       });
       setShowDeployModal(false);
       setActiveTab('deployments');
@@ -144,7 +143,7 @@ export const ServiceDetailPage: React.FC = () => {
               <span>•</span>
               <span className="flex items-center gap-1">
                 <Layers className="w-3.5 h-3.5 text-text-muted" />
-                <span>AWS Node.js / Fargate Architecture</span>
+                <span>{service.templateName || 'Service template'}</span>
               </span>
               <span>•</span>
               <span>Created {new Date(service.createdAt).toLocaleDateString()}</span>
@@ -163,13 +162,29 @@ export const ServiceDetailPage: React.FC = () => {
                 </a>
               </div>
             )}
+
+            {service.serviceEndpoint && (
+              <div>
+                <a
+                  href={service.serviceEndpoint}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-success/5 px-2.5 py-1.5 text-xs font-semibold text-success hover:bg-success/10"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open deployed service
+                </a>
+              </div>
+            )}
           </div>
 
           {/* Quick Action Buttons */}
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => setShowDeployModal(true)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-primary to-primary-hover hover:shadow-primary/30 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer"
+              disabled={service.status !== 'active' || !service.repositoryUrl}
+              title={!service.repositoryUrl ? 'A GitHub repository is not connected yet' : undefined}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-primary to-primary-hover hover:shadow-primary/30 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
               <span>Deploy</span>
@@ -183,7 +198,7 @@ export const ServiceDetailPage: React.FC = () => {
               <span>Costs</span>
             </Link>
 
-            {service.status !== 'decommissioned' && (
+            {service.status !== 'decommissioned' && service.status !== 'decommissioning' && (
               <button
                 onClick={() => setShowDecommissionModal(true)}
                 className="p-2 bg-bg-secondary hover:bg-danger/10 border border-border text-text-muted hover:text-danger rounded-xl transition-colors cursor-pointer"
@@ -225,54 +240,59 @@ export const ServiceDetailPage: React.FC = () => {
         {/* ================= TAB 1: OVERVIEW ================= */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* Live Health Banner */}
-            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
+            <div className={`flex flex-col gap-1 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${serviceHealth?.status === 'healthy' ? 'border-success/20 bg-success/5' : serviceHealth?.status === 'unhealthy' ? 'border-danger/20 bg-danger/5' : 'border-border bg-surface'}`}>
               <div className="flex items-center gap-3">
-                <div className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
+                <span className={`h-2.5 w-2.5 rounded-full ${serviceHealth?.status === 'healthy' ? 'bg-success' : serviceHealth?.status === 'unhealthy' ? 'bg-danger' : 'bg-text-muted'}`} />
                 <div>
-                  <h4 className="text-xs font-bold text-emerald-400">Endpoint Health Status: HEALTHY</h4>
-                  <p className="text-[11px] text-text-secondary">
-                    Application load balancer target group reporting 2/2 healthy container tasks.
+                  <h3 className="text-sm font-semibold text-text">
+                    {healthLoading ? 'Checking endpoint…' : serviceHealth?.status === 'healthy' ? 'Endpoint responding' : serviceHealth?.status === 'unhealthy' ? 'Endpoint unavailable' : 'Health check unavailable'}
+                  </h3>
+                  <p className="text-xs text-text-secondary">
+                    {serviceHealth?.status === 'unknown' ? 'Checks run after provisioning when the endpoint is available.' : serviceHealth?.checkedAt ? `Last checked ${new Date(serviceHealth.checkedAt).toLocaleTimeString()}` : 'Waiting for the first check'}
                   </p>
                 </div>
               </div>
-              <span className="text-xs font-mono text-emerald-400 font-bold hidden sm:inline">200 OK</span>
+              <span className="text-xs font-mono text-text-muted">
+                {serviceHealth?.statusCode ? `HTTP ${serviceHealth.statusCode}` : ''}{serviceHealth?.latencyMs != null ? ` · ${serviceHealth.latencyMs} ms` : ''}
+              </span>
             </div>
 
-            {/* Cloud Architecture Specs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               <div className="p-4 rounded-2xl bg-surface border border-border">
-                <div className="flex items-center justify-between text-xs text-text-muted mb-2">
-                  <span className="font-semibold text-text">ECS Fargate Cluster</span>
-                  <Server className="w-4 h-4 text-primary" />
+                <div className="flex items-center gap-2 text-xs text-text-muted mb-2">
+                  <Server className="w-4 h-4 text-primary" /> Service state
                 </div>
-                <p className="text-sm font-mono font-bold text-text truncate">
-                  scape-{service.name}-cluster
-                </p>
-                <p className="text-[11px] text-text-muted mt-1">2 vCPU • 4 GB Memory • Auto-scaling (1-5)</p>
+                <StatusBadge status={service.status} size="sm" />
               </div>
+              <div className="p-4 rounded-2xl bg-surface border border-border">
+                <div className="flex items-center gap-2 text-xs text-text-muted mb-2">
+                  <Layers className="w-4 h-4 text-secondary" /> Template
+                </div>
+                <p className="text-sm font-semibold text-text truncate">{service.templateName || service.templateId}</p>
+              </div>
+              <div className="p-4 rounded-2xl bg-surface border border-border">
+                <div className="flex items-center gap-2 text-xs text-text-muted mb-2">
+                  <Globe className="w-4 h-4 text-primary" /> Environment
+                </div>
+                <p className="text-sm font-semibold capitalize text-text">{service.environment}</p>
+              </div>
+              <div className="p-4 rounded-2xl bg-surface border border-border">
+                <div className="flex items-center gap-2 text-xs text-text-muted mb-2">
+                  <Globe className="w-4 h-4 text-primary" /> AWS region
+                </div>
+                <p className="text-sm font-mono font-semibold text-text">{service.region}</p>
+              </div>
+            </div>
 
-              <div className="p-4 rounded-2xl bg-surface border border-border">
-                <div className="flex items-center justify-between text-xs text-text-muted mb-2">
-                  <span className="font-semibold text-text">Database (RDS PostgreSQL)</span>
-                  <Layers className="w-4 h-4 text-secondary" />
-                </div>
-                <p className="text-sm font-mono font-bold text-text truncate">
-                  scape-{service.name}-db.postgres.rds
-                </p>
-                <p className="text-[11px] text-text-muted mt-1">PostgreSQL 15.4 • db.t4g.micro • Multi-AZ</p>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-surface border border-border">
-                <div className="flex items-center justify-between text-xs text-text-muted mb-2">
-                  <span className="font-semibold text-text">Application Load Balancer</span>
-                  <Globe className="w-4 h-4 text-emerald-400" />
-                </div>
-                <p className="text-sm font-mono font-bold text-text truncate">
-                  alb-ext-{service.name}.aws.internal
-                </p>
-                <p className="text-[11px] text-text-muted mt-1">TLS 1.3 ACM cert • HTTP/2 enabled</p>
-              </div>
+            <div className="p-5 rounded-2xl bg-surface border border-border">
+              <h3 className="text-sm font-bold text-text">Service endpoint</h3>
+              {service.serviceEndpoint ? (
+                <a href={service.serviceEndpoint} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 break-all text-sm font-mono text-primary hover:underline">
+                  {service.serviceEndpoint}<ExternalLink className="w-4 h-4 shrink-0" />
+                </a>
+              ) : (
+                <p className="mt-2 text-xs text-text-muted">An endpoint will appear here after infrastructure provisioning completes.</p>
+              )}
             </div>
 
             {/* Provisioning Snapshot */}
@@ -461,7 +481,7 @@ export const ServiceDetailPage: React.FC = () => {
                 </div>
                 <div className="p-3 bg-bg-secondary rounded-xl">
                   <span className="text-text-muted block text-[11px] mb-1">TAG_MANAGED_BY</span>
-                  <span className="text-emerald-400 font-bold">forge-platform</span>
+                  <span className="text-emerald-400 font-bold">scape</span>
                 </div>
               </div>
 
@@ -497,27 +517,15 @@ export const ServiceDetailPage: React.FC = () => {
 
               <div className="space-y-3 pt-2">
                 <div>
-                  <label className="block text-xs font-semibold text-text mb-1">Git Branch</label>
-                  <input
-                    type="text"
-                    value={deployBranch}
-                    onChange={(e) => setDeployBranch(e.target.value)}
-                    required
-                    placeholder="main"
-                    className="w-full px-3 py-2 bg-bg-secondary border border-border rounded-xl text-xs text-text font-mono focus:outline-none focus:border-primary"
-                  />
+                  <label className="block text-xs font-semibold text-text mb-1">Deployment branch</label>
+                  <div className="w-full px-3 py-2 bg-bg-secondary border border-border rounded-xl text-xs text-text font-mono">main</div>
+                  <p className="mt-2 text-[11px] text-text-muted">GitHub Actions will deploy the latest commit on the main branch.</p>
                 </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-text mb-1">Commit SHA (optional)</label>
-                  <input
-                    type="text"
-                    value={deployCommitSha}
-                    onChange={(e) => setDeployCommitSha(e.target.value)}
-                    placeholder="e.g. 7c9f8a1 (leave empty for HEAD)"
-                    className="w-full px-3 py-2 bg-bg-secondary border border-border rounded-xl text-xs text-text font-mono focus:outline-none focus:border-primary"
-                  />
-                </div>
+                {createDeploymentMutation.isError && (
+                  <p role="alert" className="rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
+                    Could not start the deployment. Check the GitHub Actions integration and try again.
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">

@@ -4,9 +4,9 @@ import * as teamsService from './teams.service.js';
 /**
  * GET /teams
  */
-export async function getAll(_req: Request, res: Response, next: NextFunction) {
+export async function getAll(req: Request, res: Response, next: NextFunction) {
   try {
-    const teams = await teamsService.getAllTeams();
+    const teams = await teamsService.getAllTeams(req.user!.teamId, req.user!.role);
     res.json(teams);
   } catch (err) {
     next(err);
@@ -30,7 +30,11 @@ export async function create(req: Request, res: Response, next: NextFunction) {
  */
 export async function getById(req: Request, res: Response, next: NextFunction) {
   try {
-    const team = await teamsService.getTeamById(req.params.id as string);
+    const team = await teamsService.getTeamById(
+      req.params.id as string,
+      req.user!.teamId,
+      req.user!.role,
+    );
     res.json(team);
   } catch (err) {
     next(err);
@@ -42,7 +46,11 @@ export async function getById(req: Request, res: Response, next: NextFunction) {
  */
 export async function getMembers(req: Request, res: Response, next: NextFunction) {
   try {
-    const members = await teamsService.getTeamMembers(req.params.id as string);
+    const members = await teamsService.getTeamMembers(
+      req.params.id as string,
+      req.user!.teamId,
+      req.user!.role,
+    );
     res.json(members);
   } catch (err) {
     next(err);
@@ -54,7 +62,12 @@ export async function getMembers(req: Request, res: Response, next: NextFunction
  */
 export async function addMember(req: Request, res: Response, next: NextFunction) {
   try {
-    const member = await teamsService.addTeamMember(req.params.id as string, req.body.userId);
+    const member = await teamsService.addTeamMember(
+      req.params.id as string,
+      req.body.userId,
+      req.user!.teamId,
+      req.user!.role,
+    );
     res.status(201).json(member);
   } catch (err) {
     next(err);

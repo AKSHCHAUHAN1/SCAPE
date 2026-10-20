@@ -12,6 +12,7 @@ export type ServiceStatus =
   | 'provisioning'
   | 'active'
   | 'failed'
+  | 'decommissioning'
   | 'decommissioned';
 
 export type JobStatus =
@@ -19,7 +20,8 @@ export type JobStatus =
   | 'running'
   | 'succeeded'
   | 'failed'
-  | 'rolled_back';
+  | 'rolled_back'
+  | 'manual_intervention_required';
 
 export type DeploymentStatus =
   | 'pending'
@@ -33,7 +35,7 @@ export interface User {
   id: string;
   email: string;
   role: UserRole;
-  teamId: string;
+  teamId: string | null;
   createdAt: string;
   updatedAt: string;
   lastLoginAt: string | null;
@@ -62,11 +64,21 @@ export interface Service {
   ownerId: string;
   teamId: string;
   templateId: string;
+  templateName?: string | null;
   status: ServiceStatus;
   region: string;
+  environment: 'development' | 'staging' | 'production';
   repositoryUrl: string | null;
+  serviceEndpoint: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ServiceHealth {
+  status: 'healthy' | 'unhealthy' | 'unknown';
+  checkedAt: string;
+  latencyMs: number | null;
+  statusCode: number | null;
 }
 
 export interface ProvisioningJob {
@@ -76,7 +88,10 @@ export interface ProvisioningJob {
   status: JobStatus;
   terraformWorkspace: string;
   terraformRunId: string | null;
+  terraformLogs?: string | null;
+  terraformPlanOutput?: string | null;
   errorMessage: string | null;
+  timeoutAt?: string | null;
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
@@ -86,9 +101,9 @@ export interface Deployment {
   id: string;
   serviceId: string;
   triggeredBy: string;
-  githubRunId: string;
+  githubRunId: string | null;
   status: DeploymentStatus;
-  commitSha: string;
+  commitSha: string | null;
   branch: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -142,6 +157,7 @@ export interface CreateServiceInput {
   name: string;
   templateId: string;
   region: string;
+  environment: 'development' | 'staging' | 'production';
 }
 
 export interface CreateServiceResponse {
@@ -180,7 +196,6 @@ export interface CostSummary {
 
 export interface CreateDeploymentInput {
   serviceId: string;
-  branch?: string;
-  commitSha?: string;
+  branch?: 'main';
 }
 

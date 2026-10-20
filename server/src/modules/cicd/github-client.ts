@@ -21,6 +21,8 @@ import type {
   WebhookRegistrationPayload,
   WebhookRegistrationResult,
 } from './types.js';
+import type { ServiceTemplateType } from './types.js';
+import { config } from '../../config/index.js';
 
 // ---------------------------------------------------------------------------
 // Retry Configuration
@@ -74,6 +76,88 @@ export class GitHubIntegrator {
     this.octokitPromise = createAuthenticatedOctokit();
   }
 
+  private async requireOctokit(): Promise<Octokit> {
+    const octokit = await this.octokitPromise;
+    if (!octokit) {
+      throw new Error('GitHub App credentials are required to provision a source repository.');
+    }
+    return octokit;
+  }
+
+  /** Create a service repository from the configured template repository. */
+  async createRepositoryFromTemplate(payload: {
+    serviceId: string;
+    serviceName: string;
+    templateType: ServiceTemplateType;
+  }): Promise<{ htmlUrl: string; fullName: string }> {
+    const templateRepo = payload.templateType === 'static-frontend'
+      ? config.github.staticFrontendTemplateRepo
+      : config.github.nodejsApiTemplateRepo;
+    const owner = config.github.repositoryOwner;
+    const templateOwner = config.github.templateOwner;
+
+    if (!owner || !templateOwner || !templateRepo) {
+      throw new Error('GitHub repository owner and service template repositories must be configured.');
+    }
+
+    const octokit = await this.requireOctokit();
+    const repositoryName = `${payload.serviceName.slice(0, 90)}-${payload.serviceId.slice(0, 8)}`;
+    const marker = `[scape-service:${payload.serviceId}]`;
+    const description = `SCAPE service ${payload.serviceName} ${marker}`;
+
+    try {
+      const { data } = await withRetry(
+        () => octokit.repos.createUsingTemplate({
+          template_owner: templateOwner,
+          template_repo: templateRepo,
+          owner,
+          name: repositoryName,
+          description,
+          private: true,
+          include_all_branches: false,
+        }),
+        'createRepositoryFromTemplate',
+      );
+      return { htmlUrl: data.html_url, fullName: data.full_name };
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status !== 422) throw err;
+
+      const { data } = await octokit.repos.get({ owner, repo: repositoryName });
+      if (!data.description?.includes(marker)) {
+        throw new Error(`GitHub repository ${owner}/${repositoryName} already exists and is not owned by this service.`);
+      }
+      return { htmlUrl: data.html_url, fullName: data.full_name };
+    }
+  }
+
+  /** Archive the source repository after its infrastructure has been removed. */
+  async archiveRepository(repoUrl: string): Promise<void> {
+    const parsed = this.parseRepoUrl(repoUrl);
+    if (!parsed) throw new Error(`Invalid GitHub repository URL: ${repoUrl}`);
+    const octokit = await this.requireOctokit();
+    await withRetry(
+      () => octokit.repos.update({ owner: parsed.owner, repo: parsed.repo, archived: true }),
+      'archiveRepository',
+    );
+  }
+
+  /** Dispatch the committed deploy workflow on the repository's main branch. */
+  async dispatchDeployment(repoUrl: string, branch = 'main'): Promise<void> {
+    const parsed = this.parseRepoUrl(repoUrl);
+    if (!parsed) throw new Error(`Invalid GitHub repository URL: ${repoUrl}`);
+    const octokit = await this.requireOctokit();
+    await withRetry(
+      () => octokit.actions.createWorkflowDispatch({
+        owner: parsed.owner,
+        repo: parsed.repo,
+        workflow_id: 'deploy.yml',
+        ref: branch,
+      }),
+      'dispatchDeployment',
+    );
+  }
+
   /**
    * Parse GitHub owner and repo from repository URL.
    * Supports: https://github.com/org/repo.git, git@github.com:org/repo.git
@@ -98,19 +182,8 @@ export class GitHubIntegrator {
     const filePath = payload.filePath || '.github/workflows/deploy.yml';
     const message = payload.commitMessage || 'ci: add SCAPE automated deployment workflow';
     const parsed = this.parseRepoUrl(payload.repoUrl);
-    const octokit = await this.octokitPromise;
-
-    if (!parsed || !octokit) {
-      logger.info(
-        { repoUrl: payload.repoUrl, filePath },
-        'GitHub integration in simulation mode (no token configured or invalid repo URL)',
-      );
-      return {
-        success: true,
-        sha: 'simulated-commit-sha-' + Date.now().toString(16),
-        message: 'Workflow file generated in simulation mode',
-      };
-    }
+    if (!parsed) throw new Error(`Invalid GitHub repository URL: ${payload.repoUrl}`);
+    const octokit = await this.requireOctokit();
 
     return withRetry(async () => {
       // Check if file already exists (to get SHA for update)
@@ -158,19 +231,8 @@ export class GitHubIntegrator {
    */
   async registerWebhook(payload: WebhookRegistrationPayload): Promise<WebhookRegistrationResult> {
     const parsed = this.parseRepoUrl(payload.repoUrl);
-    const octokit = await this.octokitPromise;
-
-    if (!parsed || !octokit) {
-      logger.info(
-        { repoUrl: payload.repoUrl },
-        'Webhook registration in simulation mode',
-      );
-      return {
-        success: true,
-        hookId: 0,
-        message: 'Webhook registered in simulation mode',
-      };
-    }
+    if (!parsed) throw new Error(`Invalid GitHub repository URL: ${payload.repoUrl}`);
+    const octokit = await this.requireOctokit();
 
     return withRetry(async () => {
       // Check if webhook already exists for this URL

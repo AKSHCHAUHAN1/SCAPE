@@ -8,6 +8,7 @@ export interface AuthPayload {
   email: string;
   role: 'developer' | 'team_lead' | 'devops' | 'admin';
   teamId: string;
+  tokenUse: 'access';
 }
 
 declare global {
@@ -32,7 +33,12 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
   const token = authHeader.split(' ')[1];
 
   try {
-    const payload = jwt.verify(token, config.jwt.accessSecret) as AuthPayload;
+    const payload = jwt.verify(token, config.jwt.publicKey, {
+      algorithms: ['RS256'],
+    }) as AuthPayload;
+    if (payload.tokenUse !== 'access') {
+      throw new AppError(401, 'UNAUTHORIZED', 'Invalid access token');
+    }
     req.user = payload;
     next();
   } catch {

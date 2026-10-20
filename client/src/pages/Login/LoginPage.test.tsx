@@ -51,7 +51,8 @@ describe('LoginPage Component', () => {
     fireEvent.click(createAccountTab);
 
     expect(screen.getByText('Confirm Password')).toBeInTheDocument();
-    expect(screen.getByText('Platform Role')).toBeInTheDocument();
+    expect(screen.getByText(/New accounts start with developer access/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/role|team/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Create Platform Account/i })).toBeInTheDocument();
 
     const signInTab = screen.getByRole('button', { name: /^Sign In$/i });

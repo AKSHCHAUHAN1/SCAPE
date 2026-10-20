@@ -30,11 +30,26 @@ function generateMainTf(cfg: EnvironmentConfig): string {
 # Service: ${cfg.serviceName} (${cfg.serviceId})
 # Do not edit manually — changes will be overwritten on re-provision.
 
+terraform {
+  required_version = ">= 1.6.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.region
+}
+
 module "service" {
   source = "../../modules/${moduleName}"
 
   service_name = var.service_name
   service_id   = var.service_id
+  github_repository = var.github_repository
   region       = var.region
   environment  = var.environment
   owner_team   = var.owner_team
@@ -47,6 +62,10 @@ variable "service_name" {
 }
 
 variable "service_id" {
+  type = string
+}
+
+variable "github_repository" {
   type = string
 }
 
@@ -77,6 +96,38 @@ output "service_endpoint" {
 output "resource_arns" {
   value = module.service.resource_arns
 }
+
+output "repository_url" {
+  value = module.service.repository_url
+}
+
+output "ecr_repository_url" {
+  value = module.service.ecr_repository_url
+}
+
+output "ecs_cluster_name" {
+  value = module.service.ecs_cluster_name
+}
+
+output "ecs_service_name" {
+  value = module.service.ecs_service_name
+}
+
+output "ecs_task_definition_family" {
+  value = module.service.ecs_task_definition_family
+}
+
+output "s3_bucket_name" {
+  value = module.service.s3_bucket_name
+}
+
+output "cloudfront_distribution_id" {
+  value = module.service.cloudfront_distribution_id
+}
+
+output "deploy_role_arn" {
+  value = module.service.deploy_role_arn
+}
 `;
 }
 
@@ -102,14 +153,15 @@ function generateTfVarsJson(cfg: EnvironmentConfig): string {
   const vars = {
     service_name: cfg.serviceName,
     service_id: cfg.serviceId,
+    github_repository: cfg.githubRepository,
     region: cfg.region,
     environment: cfg.environment,
     owner_team: cfg.ownerTeam,
     tags: {
       ...cfg.tags,
+      'forge:service-id': cfg.serviceId,
+      'forge:team-id': cfg.ownerTeam,
       ManagedBy: 'scape',
-      ServiceId: cfg.serviceId,
-      TeamId: cfg.ownerTeam,
     },
   };
 

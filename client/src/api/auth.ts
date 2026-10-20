@@ -4,8 +4,6 @@ import type { User } from '../types/index.js';
 export interface RegisterPayload {
   email: string;
   password: string;
-  role?: 'developer' | 'team_lead' | 'devops' | 'admin';
-  teamId?: string;
 }
 
 export interface LoginPayload {

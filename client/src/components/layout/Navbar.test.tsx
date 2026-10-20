@@ -25,7 +25,7 @@ describe('Navbar Component', () => {
     vi.clearAllMocks();
   });
 
-  it('renders branding and staging environment badge', () => {
+  it('renders platform branding without claiming an environment status', () => {
     useAuthStore.getState().logout();
     render(
       <MemoryRouter>
@@ -33,9 +33,9 @@ describe('Navbar Component', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('FORGE')).toBeInTheDocument();
-    expect(screen.getByText('v1.0')).toBeInTheDocument();
-    expect(screen.getByText(/Staging/i)).toBeInTheDocument();
+    expect(screen.getByText('SCAPE')).toBeInTheDocument();
+    expect(screen.getByText('Cloud platform')).toBeInTheDocument();
+    expect(screen.queryByText(/Staging/i)).not.toBeInTheDocument();
   });
 
   it('renders user details when logged in and handles logout flow', async () => {

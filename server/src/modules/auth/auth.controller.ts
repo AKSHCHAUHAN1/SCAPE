@@ -67,6 +67,8 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
 
     const result = await authService.refreshAccessToken(refreshToken);
 
+    res.cookie('refreshToken', result.refreshToken, REFRESH_COOKIE_OPTIONS);
+
     res.status(200).json({
       accessToken: result.accessToken,
     });
@@ -78,19 +80,20 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
 /**
  * POST /auth/logout
  */
-export async function logout(req: Request, res: Response) {
+export async function logout(req: Request, res: Response, next: NextFunction) {
   const refreshToken = req.cookies?.refreshToken;
-  if (refreshToken) {
-    authService.revokeRefreshToken(refreshToken);
+  try {
+    if (refreshToken) await authService.revokeRefreshToken(refreshToken);
+
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+    });
+
+    res.status(200).json({ message: 'Logged out successfully' });
+  } catch (err) {
+    next(err);
   }
-
-  // Clear the refresh token cookie
-  res.clearCookie('refreshToken', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/',
-  });
-
-  res.status(200).json({ message: 'Logged out successfully' });
 }

@@ -25,6 +25,11 @@ variable "owner_team" {
   type        = string
 }
 
+variable "github_repository" {
+  description = "Owner/repository slug used to restrict the deployment role's GitHub OIDC trust"
+  type        = string
+}
+
 variable "tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)

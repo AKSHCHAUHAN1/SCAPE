@@ -12,8 +12,10 @@ describe('Services Endpoints - Integration Tests', () => {
       email: 'dev@scape.dev',
       role: 'developer',
       teamId: '22222222-2222-2222-2222-222222222222',
+      tokenUse: 'access',
     },
-    config.jwt.accessSecret,
+    config.jwt.privateKey,
+    { algorithm: 'RS256', expiresIn: '1h' },
   );
 
   beforeEach(() => {

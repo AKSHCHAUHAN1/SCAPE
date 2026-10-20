@@ -17,7 +17,7 @@ describe('Auth Endpoints - Integration Tests', () => {
           id: '11111111-1111-1111-1111-111111111111',
           email: 'newdeveloper@scape.dev',
           role: 'developer',
-          teamId: '22222222-2222-2222-2222-222222222222',
+          teamId: null,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           lastLoginAt: null,
@@ -29,8 +29,6 @@ describe('Auth Endpoints - Integration Tests', () => {
         .send({
           email: 'newdeveloper@scape.dev',
           password: 'Password123!',
-          role: 'developer',
-          teamId: '22222222-2222-2222-2222-222222222222',
         });
 
       expect(res.status).toBe(201);
@@ -46,6 +44,20 @@ describe('Auth Endpoints - Integration Tests', () => {
         .send({
           email: 'not-an-email',
           password: 'short',
+        });
+
+      expect(res.status).toBe(422);
+      expect(res.body).toHaveProperty('code', 'VALIDATION_ERROR');
+    });
+
+    it('rejects client-selected roles and team assignments', async () => {
+      const res = await request(app)
+        .post('/auth/register')
+        .send({
+          email: 'admin@attacker.dev',
+          password: 'Password123!',
+          role: 'admin',
+          teamId: '22222222-2222-2222-2222-222222222222',
         });
 
       expect(res.status).toBe(422);
@@ -102,6 +114,7 @@ describe('Auth Endpoints - Integration Tests', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('accessToken', 'new-access-token');
+      expect(res.headers['set-cookie'][0]).toContain('refreshToken=new-refresh-token');
     });
   });
 });

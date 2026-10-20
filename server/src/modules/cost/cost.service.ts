@@ -187,7 +187,7 @@ export async function upsertCostRecord(input: RecordCostInput) {
 }
 
 /**
- * Worker: sync daily costs from AWS or seed default metrics for demo.
+ * Worker: sync daily costs from AWS Cost Explorer.
  */
 export async function syncDailyCosts() {
   const client = new AwsCostExplorerClient();
@@ -213,28 +213,5 @@ export async function syncDailyCosts() {
     return items.length;
   }
 
-  // Fallback demo/development sync: generate baseline cost record for active services if none exist
-  const activeServices = await query(`SELECT id, template_id FROM services WHERE status = 'active'`);
-  let synced = 0;
-
-  for (const s of activeServices.rows) {
-    // Generate recent 7 days of realistic costs if not already present
-    for (let d = 6; d >= 0; d--) {
-      const dStart = new Date(Date.now() - d * 24 * 3600 * 1000).toISOString().split('T')[0];
-      const dEnd = new Date(Date.now() - (d - 1) * 24 * 3600 * 1000).toISOString().split('T')[0];
-      
-      const dailyBase = 1.45 + (d * 0.15);
-      await upsertCostRecord({
-        serviceId: s.id,
-        periodStart: dStart,
-        periodEnd: dEnd,
-        amountUsd: parseFloat(dailyBase.toFixed(2)),
-        currency: 'USD',
-        awsResourceIds: ['ECS-Fargate', 'RDS-Postgres', 'ALB', 'CloudWatch'],
-      });
-      synced++;
-    }
-  }
-
-  return synced;
+  return 0;
 }

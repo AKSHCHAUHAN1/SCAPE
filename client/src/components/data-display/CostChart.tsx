@@ -55,7 +55,7 @@ export const CostChart: React.FC<CostChartProps> = ({
   return (
     <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${className}`}>
       {/* Monthly Trend Area Chart */}
-      <div className="lg:col-span-2 bg-surface border border-border rounded-2xl p-5 shadow-lg shadow-black/20 flex flex-col">
+      <section className="lg:col-span-2 bg-white border border-border rounded-2xl p-5 shadow-sm flex flex-col" aria-label="Monthly cost trend">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h4 className="text-base font-semibold text-text">Monthly Spend Trend</h4>
@@ -66,7 +66,7 @@ export const CostChart: React.FC<CostChartProps> = ({
           </span>
         </div>
 
-        <div className="h-64 w-full">
+        <div className="h-64 w-full" role="img" aria-label="Area chart showing AWS cost by month">
           {monthlyTrend.length === 0 ? (
             <div className="h-full flex items-center justify-center text-xs text-text-muted">
               No historical trend data available yet
@@ -76,22 +76,22 @@ export const CostChart: React.FC<CostChartProps> = ({
               <AreaChart data={monthlyTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0.0} />
+                    <stop offset="5%" stopColor="#425cf5" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="#425cf5" stopOpacity={0.01} />
                   </linearGradient>
                 </defs>
                 <XAxis
                   dataKey="month"
-                  stroke="#64748b"
+                  stroke="#667085"
                   fontSize={12}
                   tickLine={false}
-                  axisLine={{ stroke: '#334155' }}
+                  axisLine={{ stroke: '#e3e8f0' }}
                 />
                 <YAxis
-                  stroke="#64748b"
+                  stroke="#667085"
                   fontSize={12}
                   tickLine={false}
-                  axisLine={{ stroke: '#334155' }}
+                  axisLine={{ stroke: '#e3e8f0' }}
                   tickFormatter={(val) => `$${val}`}
                 />
                 <Tooltip
@@ -111,7 +111,7 @@ export const CostChart: React.FC<CostChartProps> = ({
                 <Area
                   type="monotone"
                   dataKey="amountUsd"
-                  stroke="#6366f1"
+                  stroke="#425cf5"
                   strokeWidth={2.5}
                   fillOpacity={1}
                   fill="url(#costGradient)"
@@ -120,16 +120,16 @@ export const CostChart: React.FC<CostChartProps> = ({
             </ResponsiveContainer>
           )}
         </div>
-      </div>
+      </section>
 
       {/* Resource Breakdown Donut Chart */}
-      <div className="bg-surface border border-border rounded-2xl p-5 shadow-lg shadow-black/20 flex flex-col">
+      <section className="bg-white border border-border rounded-2xl p-5 shadow-sm flex flex-col" aria-label="Cost by AWS service">
         <div className="mb-4">
-          <h4 className="text-base font-semibold text-text">Resource Attribution</h4>
-          <p className="text-xs text-text-secondary">Cost distribution across provisioned cloud resources</p>
+          <h4 className="text-base font-semibold text-text">AWS service breakdown</h4>
+          <p className="text-xs text-text-secondary">Cost Explorer groups reported by AWS service</p>
         </div>
 
-        <div className="h-64 w-full flex items-center justify-center">
+        <div className="h-64 w-full flex items-center justify-center" role="img" aria-label="Donut chart showing reported cost by AWS service">
           {resourceBreakdown.length === 0 ? (
             <div className="h-full flex items-center justify-center text-xs text-text-muted">
               No resource breakdown recorded
@@ -150,7 +150,7 @@ export const CostChart: React.FC<CostChartProps> = ({
                   {resourceBreakdown.map((entry, index) => {
                     const color =
                       RESOURCE_COLORS[entry.resource] || PALETTE[index % PALETTE.length];
-                    return <Cell key={`cell-${index}`} fill={color} stroke="#1e293b" strokeWidth={2} />;
+                    return <Cell key={`cell-${index}`} fill={color} stroke="#ffffff" strokeWidth={2} />;
                   })}
                 </Pie>
                 <Tooltip
@@ -178,7 +178,7 @@ export const CostChart: React.FC<CostChartProps> = ({
             </ResponsiveContainer>
           )}
         </div>
-      </div>
+      </section>
     </div>
   );
 };

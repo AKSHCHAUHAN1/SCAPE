@@ -8,6 +8,11 @@ output "service_endpoint" {
   value       = "http://${aws_lb.main.dns_name}"
 }
 
+output "deploy_role_arn" {
+  description = "GitHub Actions OIDC role scoped to this service's repository"
+  value       = aws_iam_role.github_deploy.arn
+}
+
 output "resource_arns" {
   description = "List of ARNs for all provisioned resources"
   value = [
@@ -37,12 +42,22 @@ output "ecs_cluster_name" {
 
 output "ecs_service_name" {
   description = "Name of the ECS service"
-  value       = "${var.service_name}-service"
+  value       = aws_ecs_service.app.name
 }
 
 output "ecs_task_definition_family" {
   description = "Family name of the ECS task definition"
   value       = aws_ecs_task_definition.app.family
+}
+
+output "s3_bucket_name" {
+  description = "Not used by the Node.js API template"
+  value       = null
+}
+
+output "cloudfront_distribution_id" {
+  description = "Not used by the Node.js API template"
+  value       = null
 }
 
 output "vpc_id" {

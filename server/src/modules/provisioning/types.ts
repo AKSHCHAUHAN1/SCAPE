@@ -64,8 +64,10 @@ export interface ProvisioningJobData {
   templateId: string;
   terraformModulePath: string;
   region: string;
+  environment?: string;
   teamId: string;
   triggeredBy: string;
+  repositoryUrl?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,6 +133,7 @@ export interface EnvironmentConfig {
   region: string;
   environment: string;
   ownerTeam: string;
+  githubRepository: string;
   tags: Record<string, string>;
   stateBackend: StateBackendConfig;
 }

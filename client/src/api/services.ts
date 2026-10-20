@@ -4,6 +4,7 @@ import type {
   CreateServiceInput,
   CreateServiceResponse,
   ProvisioningJob,
+  ServiceHealth,
 } from '../types/index.js';
 
 export const servicesApi = {
@@ -20,6 +21,11 @@ export const servicesApi = {
    */
   async getService(id: string): Promise<Service> {
     const { data } = await apiClient.get<Service>(`/services/${id}`);
+    return data;
+  },
+
+  async getServiceHealth(id: string): Promise<ServiceHealth> {
+    const { data } = await apiClient.get<ServiceHealth>(`/services/${id}/health`);
     return data;
   },
 
@@ -58,8 +64,8 @@ export const servicesApi = {
   /**
    * Retry a failed provisioning job.
    */
-  async retryJob(jobId: string): Promise<{ message: string; jobId: string }> {
-    const { data } = await apiClient.post<{ message: string; jobId: string }>(`/jobs/${jobId}/retry`);
+  async retryJob(jobId: string): Promise<ProvisioningJob> {
+    const { data } = await apiClient.post<ProvisioningJob>(`/jobs/${jobId}/retry`);
     return data;
   },
 };

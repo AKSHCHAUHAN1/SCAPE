@@ -1,404 +1,346 @@
-import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { useAuthStore } from '../../store/authStore.js';
 import { Layout } from '../../components/layout/Layout.js';
 import { CostChart } from '../../components/data-display/CostChart.js';
 import { DataTable } from '../../components/data-display/DataTable.js';
 import { useCostSummary, useTriggerCostSync } from '../../hooks/useCosts.js';
 import { useServiceCosts } from '../../hooks/useServiceDetail.js';
+import type { CostRecord } from '../../types/index.js';
 import {
-  DollarSign,
-  TrendingUp,
-  TrendingDown,
-  RotateCw,
-  Calendar,
-  Sparkles,
+  AlertCircle,
   ArrowLeft,
-  Server,
-  Trophy,
+  Calendar,
+  DollarSign,
   Filter,
+  RotateCw,
+  Server,
+  TrendingDown,
+  TrendingUp,
 } from 'lucide-react';
+
+type CostTableRow = CostRecord | {
+  id: string;
+  serviceId: string;
+  serviceName: string;
+  totalUsd: number;
+};
 
 export const CostDashboardPage: React.FC = () => {
   const { id: serviceId } = useParams<{ id: string }>();
   const isPerService = Boolean(serviceId);
-
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('');
+  const { user } = useAuthStore();
+  const canSync = user?.role === 'admin' || user?.role === 'devops';
+  const [selectedPeriod, setSelectedPeriod] = useState('');
+  const [syncStatus, setSyncStatus] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
   const {
     data: serviceCost,
-    isLoading: sCostLoading,
-    refetch: refetchSCost,
+    isLoading: serviceLoading,
+    error: serviceError,
+    refetch: refetchService,
   } = useServiceCosts(serviceId, selectedPeriod || undefined);
-  const { data: summary, isLoading: sumLoading, refetch: refetchSum } = useCostSummary();
-  const triggerSyncMutation = useTriggerCostSync();
+  const {
+    data: summary,
+    isLoading: summaryLoading,
+    error: summaryError,
+    refetch: refetchSummary,
+  } = useCostSummary();
+  const triggerSync = useTriggerCostSync();
 
-  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+  const records = serviceCost?.records ?? [];
+  const serviceTrend = useMemo(() => {
+    const monthly = new Map<string, number>();
+    records.forEach((record) => {
+      const month = record.periodStart.slice(0, 7);
+      monthly.set(month, (monthly.get(month) ?? 0) + record.amountUsd);
+    });
+    return [...monthly.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([month, amountUsd]) => ({ month, amountUsd }));
+  }, [records]);
+
+  const monthlyTrend = isPerService ? serviceTrend : summary?.monthlyTrend ?? [];
+  const resourceBreakdown = isPerService ? serviceCost?.resourceBreakdown ?? [] : [];
+  const totalCost = isPerService ? serviceCost?.totalUsd : summary?.totalCostUsd;
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const previousMonthDate = new Date();
+  previousMonthDate.setUTCMonth(previousMonthDate.getUTCMonth() - 1);
+  const previousMonth = previousMonthDate.toISOString().slice(0, 7);
+  const currentMonthCost = isPerService
+    ? records.filter((record) => record.periodStart.startsWith(currentMonth)).reduce((sum, record) => sum + record.amountUsd, 0)
+    : summary?.monthlyCostUsd;
+  const previousMonthCost = monthlyTrend.find((item) => item.month === previousMonth)?.amountUsd;
+  const costDelta = currentMonthCost !== undefined && previousMonthCost !== undefined
+    ? currentMonthCost - previousMonthCost
+    : undefined;
+  const costDeltaPct = previousMonthCost && costDelta !== undefined
+    ? (costDelta / previousMonthCost) * 100
+    : undefined;
+  const daysElapsed = new Date().getUTCDate();
+  const dailyAverage = currentMonthCost !== undefined ? currentMonthCost / Math.max(daysElapsed, 1) : undefined;
+
+  const recordsList: CostTableRow[] = isPerService
+    ? records
+    : (summary?.servicesCosts ?? []).map((service) => ({
+        id: service.serviceId,
+        serviceId: service.serviceId,
+        serviceName: service.serviceName,
+        totalUsd: service.totalUsd,
+      }));
+
+  const isLoading = isPerService ? serviceLoading : summaryLoading;
+  const loadError = isPerService ? serviceError : summaryError;
 
   const handleSync = async () => {
+    setSyncStatus(null);
     try {
-      const res = await triggerSyncMutation.mutateAsync();
-      setSyncStatusMsg(`Successfully synchronized ${res.syncedCount} cost records from AWS.`);
-      refetchSCost();
-      refetchSum();
-      setTimeout(() => setSyncStatusMsg(null), 4000);
-    } catch {
-      setSyncStatusMsg('Sync initiated. Waiting for AWS Cost Explorer worker.');
-      setTimeout(() => setSyncStatusMsg(null), 4000);
+      const result = await triggerSync.mutateAsync();
+      await Promise.all([refetchService(), refetchSummary()]);
+      setSyncStatus({ tone: 'success', message: `Sync complete. ${result.syncedCount} cost records updated from AWS.` });
+    } catch (error) {
+      setSyncStatus({
+        tone: 'error',
+        message: error instanceof Error ? error.message : 'Cost sync failed. Check the AWS integration and try again.',
+      });
     }
   };
 
-  /* ── Cost data derivations ────────────────────────────────── */
-  const monthlyTrend = isPerService
-    ? [
-        { month: '2026-06', amountUsd: (serviceCost?.totalUsd || 15) * 0.75 },
-        { month: '2026-07', amountUsd: (serviceCost?.totalUsd || 15) * 0.85 },
-        { month: '2026-08', amountUsd: (serviceCost?.totalUsd || 15) * 0.95 },
-        { month: '2026-09', amountUsd: serviceCost?.totalUsd || 18.5 },
-      ]
-    : summary?.monthlyTrend?.length
-    ? summary.monthlyTrend
-    : [
-        { month: '2026-06', amountUsd: 42.5 },
-        { month: '2026-07', amountUsd: 68.2 },
-        { month: '2026-08', amountUsd: 89.4 },
-        { month: '2026-09', amountUsd: summary?.totalCostUsd || 112.8 },
-      ];
-
-  const resourceBreakdown = isPerService
-    ? serviceCost?.resourceBreakdown?.length
-      ? serviceCost.resourceBreakdown
-      : [
-          { resource: 'ECS-Fargate', amountUsd: (serviceCost?.totalUsd || 20) * 0.45 },
-          { resource: 'RDS-Postgres', amountUsd: (serviceCost?.totalUsd || 20) * 0.35 },
-          { resource: 'ALB', amountUsd: (serviceCost?.totalUsd || 20) * 0.15 },
-          { resource: 'CloudWatch', amountUsd: (serviceCost?.totalUsd || 20) * 0.05 },
-        ]
-    : [
-        { resource: 'ECS-Fargate', amountUsd: 55.4 },
-        { resource: 'RDS-Postgres', amountUsd: 38.2 },
-        { resource: 'ALB', amountUsd: 18.0 },
-        { resource: 'S3-Storage', amountUsd: 8.5 },
-        { resource: 'CloudFront', amountUsd: 4.2 },
-      ];
-
-  const totalCost = isPerService ? serviceCost?.totalUsd || 18.5 : summary?.totalCostUsd || 124.3;
-  const currentMonthCost = isPerService
-    ? (serviceCost?.totalUsd || 18.5) * 0.6
-    : summary?.monthlyCostUsd || 54.2;
-
-  // Month-over-month delta
-  const trend = summary?.monthlyTrend ?? [];
-  const prevMonthCost = trend.length >= 2 ? trend[trend.length - 2].amountUsd : null;
-  const costDelta =
-    prevMonthCost !== null ? currentMonthCost - prevMonthCost : null;
-  const costDeltaPct =
-    prevMonthCost && prevMonthCost > 0
-      ? ((costDelta! / prevMonthCost) * 100).toFixed(1)
-      : null;
-
-  const recordsList = isPerService
-    ? serviceCost?.records || []
-    : (summary?.servicesCosts || []).map((sc, i) => ({
-        id: `rec-${i}`,
-        serviceId: sc.serviceId,
-        serviceName: sc.serviceName,
-        periodStart: '2026-09-01',
-        periodEnd: '2026-09-30',
-        amountUsd: sc.totalUsd || 14.5,
-        currency: 'USD',
-        awsResourceIds: ['ECS-Fargate', 'RDS', 'ALB'],
-      }));
-
-  // Admin leaderboard (sorted by totalUsd descending)
-  const leaderboard = !isPerService
-    ? [...(summary?.servicesCosts || [])].sort((a, b) => b.totalUsd - a.totalUsd)
-    : [];
-
-  const isLoading = isPerService ? sCostLoading : sumLoading;
-
   return (
     <Layout>
-      <div className="space-y-6 pb-12">
-        {/* Back Link if per-service mode */}
+      <div className="space-y-7 pb-12">
         {isPerService && (
-          <div>
-            <Link
-              to={`/services/${serviceId}`}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-text transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back to Service Detail</span>
-            </Link>
-          </div>
+          <Link
+            to={`/services/${serviceId}`}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-text-muted transition-colors hover:text-text"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to service
+          </Link>
         )}
 
-        {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                <DollarSign className="w-5 h-5" />
+            <p className="page-eyebrow mb-2">Cost management</p>
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-success ring-1 ring-inset ring-emerald-100">
+                <DollarSign className="h-5 w-5" />
+              </span>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-text sm:text-[28px]">
+                  {isPerService ? 'Service cost insights' : 'Cloud cost dashboard'}
+                </h1>
+                <p className="mt-0.5 text-sm text-text-secondary">
+                  AWS reported spend, grouped by billing day and service.
+                </p>
               </div>
-              <h1 className="text-2xl font-bold tracking-tight text-text">
-                {isPerService ? 'Service Cost Analytics' : 'Cloud Cost Dashboard'}
-              </h1>
             </div>
-            <p className="text-sm text-text-secondary mt-1">
-              AWS Cost Explorer data attribution aggregated daily by resource tags
-            </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Period filter for per-service view */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             {isPerService && (
-              <div className="flex items-center gap-1.5 px-3 py-2 bg-surface border border-border rounded-xl text-xs">
-                <Filter className="w-3.5 h-3.5 text-text-muted" />
+              <label className="flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3 text-xs text-text-secondary shadow-sm">
+                <Filter className="h-3.5 w-3.5 text-text-muted" />
+                <span className="sr-only">Filter costs by month</span>
                 <input
                   type="month"
                   value={selectedPeriod}
-                  onChange={(e) => setSelectedPeriod(e.target.value)}
-                  className="bg-transparent border-none outline-none text-text font-mono text-xs w-36"
-                  placeholder="Filter by month"
+                  onChange={(event) => setSelectedPeriod(event.target.value)}
+                  className="w-36 bg-transparent text-xs text-text outline-none"
                 />
                 {selectedPeriod && (
                   <button
+                    type="button"
                     onClick={() => setSelectedPeriod('')}
-                    className="text-text-muted hover:text-danger transition-colors"
+                    className="rounded-md px-1 text-text-muted hover:bg-bg-secondary hover:text-text"
+                    aria-label="Clear month filter"
                   >
-                    ✕
+                    ×
                   </button>
                 )}
-              </div>
+              </label>
             )}
-
-            <button
-              onClick={handleSync}
-              disabled={triggerSyncMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-surface hover:bg-bg-secondary border border-border text-text text-xs font-semibold rounded-xl shadow-sm transition-all cursor-pointer disabled:opacity-50"
-            >
-              <RotateCw
-                className={`w-3.5 h-3.5 text-emerald-400 ${
-                  triggerSyncMutation.isPending ? 'animate-spin' : ''
-                }`}
-              />
-              <span>{triggerSyncMutation.isPending ? 'Syncing...' : 'Sync AWS Cost Explorer'}</span>
-            </button>
+            {canSync && (
+              <button
+                type="button"
+                onClick={handleSync}
+                disabled={triggerSync.isPending}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-white shadow-sm shadow-primary/15 transition-all hover:-translate-y-0.5 hover:bg-primary-hover disabled:opacity-60"
+              >
+                <RotateCw className={`h-3.5 w-3.5 ${triggerSync.isPending ? 'animate-spin' : ''}`} />
+                {triggerSync.isPending ? 'Syncing costs…' : 'Sync AWS costs'}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Status Notification */}
-        {syncStatusMsg && (
-          <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center gap-2">
-            <Sparkles className="w-4 h-4" />
-            <span>{syncStatusMsg}</span>
+        {syncStatus && (
+          <div className={`flex items-start gap-2.5 rounded-xl border px-4 py-3 text-xs ${
+            syncStatus.tone === 'success'
+              ? 'border-success/20 bg-success/5 text-success'
+              : 'border-danger/20 bg-danger/5 text-danger'
+          }`} role="status">
+            {syncStatus.tone === 'error' && <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />}
+            <span>{syncStatus.message}</span>
           </div>
         )}
 
-        {/* Period filter indicator */}
+        {loadError && (
+          <div className="flex items-start gap-3 rounded-2xl border border-danger/20 bg-danger/5 p-4 text-sm text-danger" role="alert">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            Cost data could not be loaded. Refresh the page or check your access to this service.
+          </div>
+        )}
+
         {selectedPeriod && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-xl text-xs text-primary font-semibold w-fit">
-            <Calendar className="w-3.5 h-3.5" />
-            <span>Filtering by: {selectedPeriod}</span>
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary">
+            <Calendar className="h-3.5 w-3.5" />
+            Billing period: {selectedPeriod}
           </div>
         )}
 
-        {/* Top Metric Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-4 rounded-2xl bg-surface border border-border shadow-md hover:border-emerald-500/30 transition-colors">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-muted">Total Run Cost</span>
-              <DollarSign className="w-4 h-4 text-emerald-400" />
-            </div>
-            <p className="text-2xl font-extrabold text-emerald-400 mt-2">${totalCost.toFixed(2)}</p>
-            <span className="text-[11px] text-text-muted font-mono">Accumulated USD</span>
-          </div>
+        <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Cost summary">
+          <MetricCard
+            label={isPerService ? 'Tracked service spend' : 'Total tracked spend'}
+            value={totalCost}
+            note="AWS reported · USD"
+            icon={<DollarSign className="h-4 w-4" />}
+            loading={isLoading}
+          />
+          <MetricCard
+            label="Current month"
+            value={currentMonthCost}
+            note="Month to date · USD"
+            icon={<Calendar className="h-4 w-4" />}
+            loading={isLoading}
+          />
+          <MetricCard
+            label="Change vs previous month"
+            value={costDelta}
+            note={costDeltaPct === undefined ? 'Need two months of cost data' : `${costDeltaPct >= 0 ? '+' : ''}${costDeltaPct.toFixed(1)}% month over month`}
+            icon={costDelta !== undefined && costDelta > 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+            loading={isLoading}
+            signed
+          />
+          <MetricCard
+            label="Daily average this month"
+            value={dailyAverage}
+            note="Month-to-date spend ÷ days elapsed"
+            icon={<TrendingUp className="h-4 w-4" />}
+            loading={isLoading}
+          />
+        </section>
 
-          <div className="p-4 rounded-2xl bg-surface border border-border shadow-md hover:border-primary/30 transition-colors">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-muted">Current Month</span>
-              <Calendar className="w-4 h-4 text-primary" />
-            </div>
-            <p className="text-2xl font-extrabold text-text mt-2">${currentMonthCost.toFixed(2)}</p>
-            <span className="text-[11px] text-emerald-400 font-medium">Within budget limits</span>
-          </div>
-
-          {/* Month-over-month delta card */}
-          <div className="p-4 rounded-2xl bg-surface border border-border shadow-md hover:border-secondary/30 transition-colors">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-muted">vs Last Month</span>
-              {costDelta !== null && costDelta > 0 ? (
-                <TrendingUp className="w-4 h-4 text-warning" />
-              ) : (
-                <TrendingDown className="w-4 h-4 text-emerald-400" />
-              )}
-            </div>
-            {costDelta !== null ? (
-              <>
-                <p
-                  className={`text-2xl font-extrabold mt-2 ${
-                    costDelta > 0 ? 'text-warning' : 'text-emerald-400'
-                  }`}
-                >
-                  {costDelta >= 0 ? '+' : ''}${costDelta.toFixed(2)}
-                </p>
-                <span
-                  className={`text-[11px] font-medium ${
-                    costDelta > 0 ? 'text-warning' : 'text-emerald-400'
-                  }`}
-                >
-                  {costDelta >= 0 ? '+' : ''}
-                  {costDeltaPct}% month-over-month
-                </span>
-              </>
-            ) : (
-              <>
-                <p className="text-2xl font-extrabold text-text-muted mt-2">—</p>
-                <span className="text-[11px] text-text-muted">No prior month data</span>
-              </>
-            )}
-          </div>
-
-          <div className="p-4 rounded-2xl bg-surface border border-border shadow-md">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-muted">Daily Burn Rate</span>
-              <TrendingUp className="w-4 h-4 text-secondary" />
-            </div>
-            <p className="text-2xl font-extrabold text-secondary mt-2">
-              ${(currentMonthCost / 24).toFixed(2)}
-            </p>
-            <span className="text-[11px] text-text-muted">Estimated per 24 hours</span>
-          </div>
-        </div>
-
-        {/* Visual Charts */}
         <CostChart
           monthlyTrend={monthlyTrend}
           resourceBreakdown={resourceBreakdown}
           currency="USD"
         />
 
-        {/* Admin Cost Leaderboard (non per-service view only) */}
-        {!isPerService && leaderboard.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-warning" />
-              <h3 className="text-base font-bold text-text">Service Cost Leaderboard</h3>
-              <span className="text-[11px] text-text-muted ml-auto font-mono">
-                Sorted by total spend (all-time)
-              </span>
+        <section className="space-y-3">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-text">
+                {isPerService ? 'Daily cost records' : 'Spend by service'}
+              </h2>
+              <p className="mt-0.5 text-xs text-text-muted">
+                {isPerService ? 'Daily billing data returned by AWS Cost Explorer.' : 'Totals are aggregated from available AWS cost records.'}
+              </p>
             </div>
-            <div className="bg-surface border border-border rounded-2xl overflow-hidden">
-              {leaderboard.map((sc, i) => {
-                const maxCost = leaderboard[0].totalUsd || 1;
-                const pct = ((sc.totalUsd / maxCost) * 100).toFixed(0);
-                const rankColors = ['text-warning', 'text-text-secondary', 'text-emerald-600'];
-                return (
-                  <div
-                    key={sc.serviceId}
-                    className={`flex items-center gap-4 px-5 py-3.5 ${
-                      i < leaderboard.length - 1 ? 'border-b border-border/60' : ''
-                    } hover:bg-bg-secondary/40 transition-colors`}
-                  >
-                    <span
-                      className={`text-sm font-extrabold w-6 text-right font-mono ${
-                        rankColors[i] ?? 'text-text-muted'
-                      }`}
-                    >
-                      #{i + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-text truncate">{sc.serviceName}</p>
-                      <div className="mt-1 w-full h-1.5 bg-bg-secondary rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-emerald-400 rounded-full transition-all"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                    <span className="text-sm font-extrabold text-emerald-400 font-mono whitespace-nowrap">
-                      ${sc.totalUsd.toFixed(2)}
-                    </span>
+            <span className="text-[11px] text-text-muted">AWS data may arrive with a delay.</span>
+          </div>
+
+          <DataTable<CostTableRow>
+            data={recordsList}
+            keyExtractor={(row) => row.id}
+            isLoading={isLoading}
+            emptyTitle="No cost records yet"
+            emptyDescription="Cost data will appear after AWS Cost Explorer returns tagged usage for this billing period."
+            searchPlaceholder="Search service or AWS resource…"
+            searchFields={isPerService ? ['periodStart', 'periodEnd', 'awsResourceIds'] : ['serviceName', 'serviceId']}
+            columns={isPerService ? [
+              {
+                key: 'periodStart',
+                header: 'Billing date',
+                sortable: true,
+                render: (row) => {
+                  const record = row as CostRecord;
+                  return <span className="font-mono text-xs text-text-secondary">{record.periodStart} – {record.periodEnd}</span>;
+                },
+              },
+              {
+                key: 'amountUsd',
+                header: 'Reported spend',
+                sortable: true,
+                render: (row) => <span className="font-semibold text-text">${(row as CostRecord).amountUsd.toFixed(4)} USD</span>,
+              },
+              {
+                key: 'awsResourceIds',
+                header: 'AWS service groups',
+                render: (row) => (
+                  <span className="text-xs text-text-secondary">
+                    {(row as CostRecord).awsResourceIds.length ? (row as CostRecord).awsResourceIds.join(', ') : 'Unclassified'}
+                  </span>
+                ),
+              },
+            ] : [
+              {
+                key: 'serviceName',
+                header: 'Service',
+                sortable: true,
+                render: (row) => (
+                  <div className="flex items-center gap-2.5">
+                    <Server className="h-4 w-4 text-primary" />
+                    <span className="font-medium text-text">{(row as Extract<CostTableRow, { serviceName: string }>).serviceName}</span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Cost Records Breakdown Table */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-text">
-              {isPerService ? 'Daily Cost Attribution Records' : 'Per-Service Spend Breakdown'}
-            </h3>
-            <span className="text-xs text-text-muted font-mono">Sync cadence: Daily at 04:00 UTC</span>
-          </div>
-
-          {isLoading ? (
-            <div className="animate-pulse space-y-2">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="h-12 bg-surface border border-border rounded-xl" />
-              ))}
-            </div>
-          ) : (
-            <DataTable
-              data={recordsList}
-              keyExtractor={(r: any) => r.id || r.serviceId}
-              columns={[
-                {
-                  key: 'service',
-                  header: 'Service / Resource',
-                  sortable: true,
-                  render: (r: any) => (
-                    <div className="flex items-center gap-2">
-                      <Server className="w-4 h-4 text-primary" />
-                      <span className="font-semibold text-text">
-                        {r.serviceName || `service-${r.serviceId.substring(0, 8)}`}
-                      </span>
-                    </div>
-                  ),
-                },
-                {
-                  key: 'periodStart',
-                  header: 'Billing Period',
-                  sortable: true,
-                  render: (r: any) => (
-                    <span className="font-mono text-xs text-text-secondary">
-                      {r.periodStart} → {r.periodEnd}
-                    </span>
-                  ),
-                },
-                {
-                  key: 'amountUsd',
-                  header: 'Spend Amount',
-                  sortable: true,
-                  render: (r: any) => (
-                    <span className="font-bold text-emerald-400 font-mono">
-                      ${Number(r.amountUsd).toFixed(2)} USD
-                    </span>
-                  ),
-                },
-                {
-                  key: 'awsResourceIds',
-                  header: 'Allocated AWS Resources',
-                  render: (r: any) => (
-                    <div className="flex flex-wrap gap-1">
-                      {(r.awsResourceIds || []).map((resId: string, idx: number) => (
-                        <span
-                          key={idx}
-                          className="text-[10px] px-2 py-0.5 rounded bg-bg-secondary text-text-muted border border-border"
-                        >
-                          {resId}
-                        </span>
-                      ))}
-                    </div>
-                  ),
-                },
-              ]}
-            />
-          )}
-        </div>
+                ),
+              },
+              {
+                key: 'totalUsd',
+                header: 'Tracked spend',
+                sortable: true,
+                render: (row) => <span className="font-semibold text-text">${(row as Extract<CostTableRow, { totalUsd: number }>).totalUsd.toFixed(2)} USD</span>,
+              },
+            ]}
+          />
+        </section>
       </div>
     </Layout>
   );
 };
+
+function MetricCard({
+  label,
+  value,
+  note,
+  icon,
+  loading,
+  signed = false,
+}: {
+  label: string;
+  value: number | undefined;
+  note: string;
+  icon: React.ReactNode;
+  loading: boolean;
+  signed?: boolean;
+}) {
+  const amount = value === undefined
+    ? '—'
+    : signed
+      ? `${value > 0 ? '+' : value < 0 ? '−' : ''}$${Math.abs(value).toFixed(2)}`
+      : `$${value.toFixed(2)}`;
+  return (
+    <div className="rounded-2xl border border-border bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-text-secondary">{label}</p>
+        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-bg-secondary text-primary">{icon}</span>
+      </div>
+      {loading ? (
+        <div className="mt-4 h-8 w-28 animate-pulse rounded-md bg-bg-tertiary" />
+      ) : (
+        <p className="mt-3 text-2xl font-bold tracking-tight text-text">{amount}</p>
+      )}
+      <p className="mt-1.5 text-[11px] text-text-muted">{note}</p>
+    </div>
+  );
+}

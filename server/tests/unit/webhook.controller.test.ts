@@ -98,6 +98,7 @@ describe('WebhookController', () => {
       repository: {
         name: 'test-app',
         full_name: 'test-org/test-app',
+        html_url: 'https://github.com/test-org/test-app',
       },
     };
     const payload = JSON.stringify(body);
@@ -118,7 +119,12 @@ describe('WebhookController', () => {
       rowCount: 0,
       rows: [],
     });
-    // Insert new deployment
+    // No manual pending deployment matches this workflow run.
+    mockQuery.mockResolvedValueOnce({
+      rowCount: 0,
+      rows: [],
+    });
+    // Insert the GitHub run as a deployment.
     mockQuery.mockResolvedValueOnce({
       rowCount: 1,
       rows: [{ id: 'dep-001' }],

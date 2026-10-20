@@ -33,7 +33,7 @@ export const AuditLogPage: React.FC = () => {
             </div>
             <h2 className="text-xl font-bold text-text">Administrator Role Required</h2>
             <p className="text-xs text-text-secondary leading-relaxed">
-              The Immutable Audit Log contains privileged enterprise compliance records and is restricted
+              The append only audit log contains privileged platform activity and is restricted
               to users with the <span className="font-semibold text-text">admin</span> role.
             </p>
             <p className="text-[11px] text-text-muted">
@@ -92,13 +92,13 @@ export const AuditLogPage: React.FC = () => {
               <h1 className="text-2xl font-bold tracking-tight text-text">Enterprise Audit Log</h1>
             </div>
             <p className="text-sm text-text-secondary mt-1">
-              Tamper-evident system activity and cloud infrastructure provisioning event trail
+              Platform, provisioning, access, and deployment events with searchable details
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
-              Immutable Ledger
+              Append only
             </span>
           </div>
         </div>

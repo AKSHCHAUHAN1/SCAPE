@@ -20,10 +20,15 @@ interface UserRow {
 /**
  * Get all teams.
  */
-export async function getAllTeams() {
-  const result = await query<TeamRow>(
-    'SELECT id, name, created_at, updated_at FROM teams ORDER BY name',
-  );
+export async function getAllTeams(teamId: string, userRole: string) {
+  if (userRole !== 'admin' && userRole !== 'devops' && !teamId) return [];
+
+  const result = userRole === 'admin' || userRole === 'devops'
+    ? await query<TeamRow>('SELECT id, name, created_at, updated_at FROM teams ORDER BY name')
+    : await query<TeamRow>(
+        'SELECT id, name, created_at, updated_at FROM teams WHERE id = $1 ORDER BY name',
+        [teamId],
+      );
 
   return result.rows.map((t) => ({
     id: t.id,
@@ -65,7 +70,7 @@ export async function createTeam(input: CreateTeamInput) {
 /**
  * Get a team by ID.
  */
-export async function getTeamById(teamId: string) {
+export async function getTeamById(teamId: string, requesterTeamId: string, userRole: string) {
   const result = await query<TeamRow>(
     'SELECT id, name, created_at, updated_at FROM teams WHERE id = $1',
     [teamId],
@@ -74,6 +79,8 @@ export async function getTeamById(teamId: string) {
   if (!result.rowCount || result.rowCount === 0) {
     throw new AppError(404, 'TEAM_NOT_FOUND', 'Team not found');
   }
+
+  assertTeamAccess(teamId, requesterTeamId, userRole);
 
   const team = result.rows[0];
   return {
@@ -87,12 +94,14 @@ export async function getTeamById(teamId: string) {
 /**
  * Get all members of a team.
  */
-export async function getTeamMembers(teamId: string) {
+export async function getTeamMembers(teamId: string, requesterTeamId: string, userRole: string) {
   // Verify team exists
   const team = await query('SELECT id FROM teams WHERE id = $1', [teamId]);
   if (!team.rowCount || team.rowCount === 0) {
     throw new AppError(404, 'TEAM_NOT_FOUND', 'Team not found');
   }
+
+  assertTeamAccess(teamId, requesterTeamId, userRole);
 
   const result = await query<UserRow>(
     `SELECT id, email, role, team_id, created_at
@@ -113,7 +122,13 @@ export async function getTeamMembers(teamId: string) {
 /**
  * Add a user to a team.
  */
-export async function addTeamMember(teamId: string, userId: string) {
+export async function addTeamMember(
+  teamId: string,
+  userId: string,
+  actorTeamId: string,
+  actorRole: string,
+) {
+  assertTeamAccess(teamId, actorTeamId, actorRole);
   // Verify team exists
   const team = await query('SELECT id FROM teams WHERE id = $1', [teamId]);
   if (!team.rowCount || team.rowCount === 0) {
@@ -134,6 +149,10 @@ export async function addTeamMember(teamId: string, userId: string) {
     throw new AppError(409, 'ALREADY_MEMBER', 'User is already a member of this team');
   }
 
+  if (user.rows[0].team_id) {
+    throw new AppError(409, 'USER_ALREADY_ASSIGNED', 'User already belongs to another team');
+  }
+
   // Assign user to team
   const result = await query<UserRow>(
     `UPDATE users SET team_id = $1, updated_at = NOW() WHERE id = $2
@@ -149,4 +168,10 @@ export async function addTeamMember(teamId: string, userId: string) {
     teamId: updated.team_id,
     createdAt: updated.created_at,
   };
+}
+
+function assertTeamAccess(teamId: string, requesterTeamId: string, userRole: string) {
+  if (userRole !== 'admin' && userRole !== 'devops' && teamId !== requesterTeamId) {
+    throw new AppError(403, 'FORBIDDEN', 'You do not have access to this team');
+  }
 }

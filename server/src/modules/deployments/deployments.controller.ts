@@ -9,7 +9,7 @@ export async function create(req: Request, res: Response, next: NextFunction) {
       req.user!.teamId,
       req.user!.role,
     );
-    res.status(201).json(deployment);
+    res.status(202).json(deployment);
   } catch (err) {
     next(err);
   }

@@ -5,6 +5,7 @@ import { StatusBadge } from '../../components/ui/StatusBadge.js';
 import { EmptyState } from '../../components/ui/EmptyState.js';
 import { DataTable } from '../../components/data-display/DataTable.js';
 import { useServices, useDeleteService } from '../../hooks/useServices.js';
+import { useCostSummary } from '../../hooks/useCosts.js';
 import type { Service } from '../../types/index.js';
 import {
   Boxes,
@@ -26,6 +27,7 @@ import {
 
 export const ServicesPage: React.FC = () => {
   const { data: services = [], isLoading, error, refetch } = useServices();
+  const { data: costSummary } = useCostSummary();
   const deleteServiceMutation = useDeleteService();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -105,11 +107,11 @@ export const ServicesPage: React.FC = () => {
 
           <div className="p-4 rounded-2xl bg-surface border border-border shadow-md shadow-black/10">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-muted">Active & Healthy</span>
+                <span className="text-xs font-medium text-text-muted">Active services</span>
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
             </div>
             <p className="text-2xl font-extrabold text-emerald-400 mt-2">{metrics.active}</p>
-            <span className="text-[11px] text-emerald-500/80 font-medium">Ready for deployment</span>
+            <span className="text-[11px] text-text-muted font-medium">Ready for deployment</span>
           </div>
 
           <div className="p-4 rounded-2xl bg-surface border border-border shadow-md shadow-black/10">
@@ -123,13 +125,13 @@ export const ServicesPage: React.FC = () => {
 
           <div className="p-4 rounded-2xl bg-surface border border-border shadow-md shadow-black/10">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-text-muted">Monthly Estimate</span>
+              <span className="text-xs font-medium text-text-muted">Current month spend</span>
               <TrendingUp className="w-4 h-4 text-secondary" />
             </div>
             <p className="text-2xl font-extrabold text-secondary mt-2">
-              ${(metrics.active * 14.5).toFixed(2)}
+              {costSummary ? `$${costSummary.monthlyCostUsd.toFixed(2)}` : '—'}
             </p>
-            <span className="text-[11px] text-text-muted font-mono">USD / month</span>
+            <span className="text-[11px] text-text-muted font-mono">USD · synced cost data</span>
           </div>
         </div>
 
@@ -149,7 +151,7 @@ export const ServicesPage: React.FC = () => {
 
           {/* Status Pills */}
           <div className="flex items-center gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
-            {['ALL', 'ACTIVE', 'PROVISIONING', 'PENDING', 'FAILED', 'DECOMMISSIONED'].map((status) => (
+            {['ALL', 'ACTIVE', 'PROVISIONING', 'PENDING', 'FAILED', 'DECOMMISSIONING', 'DECOMMISSIONED'].map((status) => (
               <button
                 key={status}
                 onClick={() => setSelectedStatus(status)}
@@ -267,7 +269,7 @@ export const ServicesPage: React.FC = () => {
                       <div className="p-3 rounded-xl bg-bg-secondary/60 border border-border/60 my-3 text-xs space-y-1.5">
                         <div className="flex items-center justify-between text-text-muted">
                           <span>Template</span>
-                          <span className="text-text font-medium">AWS Node.js / Fargate</span>
+                          <span className="text-text font-medium">{service.templateName || 'Cloud service'}</span>
                         </div>
                         <div className="flex items-center justify-between text-text-muted">
                           <span>Created</span>
@@ -308,7 +310,7 @@ export const ServicesPage: React.FC = () => {
                         >
                           <DollarSign className="w-3.5 h-3.5" />
                         </Link>
-                        {service.status !== 'decommissioned' && (
+                        {service.status !== 'decommissioned' && service.status !== 'decommissioning' && (
                           <button
                             onClick={() => setServiceToDelete(service)}
                             title="Decommission Service"
@@ -399,8 +401,7 @@ export const ServicesPage: React.FC = () => {
                 <h3 className="text-lg font-bold text-text">Decommission Service?</h3>
                 <p className="text-xs text-text-secondary mt-1 leading-normal">
                   Are you sure you want to decommission{' '}
-                  <span className="font-semibold text-text">"{serviceToDelete.name}"</span>? This will mark
-                  the service as decommissioned and stop associated cloud resources.
+                  <span className="font-semibold text-text">"{serviceToDelete.name}"</span>? SCAPE will queue Terraform to remove its cloud resources, then archive its source repository.
                 </p>
               </div>
 

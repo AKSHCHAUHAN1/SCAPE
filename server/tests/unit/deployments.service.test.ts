@@ -15,9 +15,17 @@ vi.mock('../../src/modules/audit/audit.service.js', () => ({
   logAction: vi.fn(),
 }));
 
+const mockDispatchDeployment = vi.fn();
+vi.mock('../../src/modules/cicd/github-client.js', () => ({
+  GitHubIntegrator: vi.fn().mockImplementation(() => ({
+    dispatchDeployment: (...args: any[]) => mockDispatchDeployment(...args),
+  })),
+}));
+
 describe('Deployments Service - Unit Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDispatchDeployment.mockResolvedValue(undefined);
   });
 
   describe('createDeployment()', () => {
@@ -26,7 +34,10 @@ describe('Deployments Service - Unit Tests', () => {
 
       // 1. getServiceById check
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 'srv-1', team_id: 'team-1', name: 'service-a' }],
+        rows: [{
+          id: 'srv-1', team_id: 'team-1', name: 'service-a', status: 'active',
+          repository_url: 'https://github.com/team/service-a',
+        }],
         rowCount: 1, command: '', oid: 0, fields: []
       });
 
@@ -36,11 +47,11 @@ describe('Deployments Service - Unit Tests', () => {
           id: 'dep-1',
           service_id: 'srv-1',
           triggered_by: 'user-1',
-          github_run_id: 'gh-123',
-          status: 'running',
-          commit_sha: 'a1b2c3d',
+          github_run_id: null,
+          status: 'pending',
+          commit_sha: null,
           branch: 'main',
-          started_at: new Date(),
+          started_at: null,
           completed_at: null,
           created_at: new Date(),
         }],
@@ -48,15 +59,16 @@ describe('Deployments Service - Unit Tests', () => {
       });
 
       const result = await createDeployment(
-        { serviceId: 'srv-1', commitSha: 'a1b2c3d', branch: 'main', githubRunId: 'gh-123' },
+        { serviceId: 'srv-1', branch: 'main' },
         'user-1',
         'team-1',
         'developer',
       );
 
       expect(result.id).toBe('dep-1');
-      expect(result.status).toBe('running');
-      expect(result.commitSha).toBe('a1b2c3d');
+      expect(result.status).toBe('pending');
+      expect(result.commitSha).toBeNull();
+      expect(mockDispatchDeployment).toHaveBeenCalledWith('https://github.com/team/service-a', 'main');
     });
   });
 

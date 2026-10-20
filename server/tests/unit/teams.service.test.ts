@@ -46,7 +46,7 @@ describe('Teams Service - Unit Tests', () => {
         rowCount: 1, command: '', oid: 0, fields: []
       });
 
-      const result = await getTeamById('team-1');
+      const result = await getTeamById('team-1', 'team-1', 'developer');
       expect(result.id).toBe('team-1');
       expect(result.name).toBe('Alpha');
     });
@@ -55,7 +55,7 @@ describe('Teams Service - Unit Tests', () => {
       const mockQuery = vi.mocked(query);
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0, command: '', oid: 0, fields: [] });
 
-      await expect(getTeamById('not-found')).rejects.toMatchObject({
+      await expect(getTeamById('not-found', 'team-1', 'developer')).rejects.toMatchObject({
         statusCode: 404,
         code: 'TEAM_NOT_FOUND',
       });
@@ -73,7 +73,7 @@ describe('Teams Service - Unit Tests', () => {
         rowCount: 2, command: '', oid: 0, fields: []
       });
 
-      const result = await getAllTeams();
+      const result = await getAllTeams('', 'admin');
       expect(result.length).toBe(2);
       expect(result[0].name).toBe('T1');
       expect(result[1].name).toBe('T2');

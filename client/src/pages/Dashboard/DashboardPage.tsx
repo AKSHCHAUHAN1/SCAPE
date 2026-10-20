@@ -123,8 +123,8 @@ export const DashboardPage: React.FC = () => {
   // Derive cost month-over-month delta (compare last 2 months from monthlyTrend)
   const trend = costSummary?.monthlyTrend ?? [];
   const prevMonthCost = trend.length >= 2 ? trend[trend.length - 2].amountUsd : null;
-  const curMonthCost = costSummary?.monthlyCostUsd ?? 0;
-  const costDelta = prevMonthCost !== null ? curMonthCost - prevMonthCost : null;
+  const curMonthCost = costSummary?.monthlyCostUsd;
+  const costDelta = prevMonthCost !== null && curMonthCost !== undefined ? curMonthCost - prevMonthCost : null;
   const costDeltaPct =
     prevMonthCost && prevMonthCost > 0 ? ((costDelta! / prevMonthCost) * 100).toFixed(1) : null;
 
@@ -221,21 +221,18 @@ export const DashboardPage: React.FC = () => {
               sub={`${platform?.services.active ?? 0} active`}
               icon={Server}
               accentClass="text-primary"
-              trend="up"
             />
             <MetricCard
               label="Deployments"
               value={platform?.deployments.total ?? 0}
-              sub={`${platform?.deployments.successRate ?? 100}% success rate`}
+              sub={platform?.deployments.successRate != null ? `${platform.deployments.successRate}% success rate` : 'No deployment history'}
               icon={GitBranch}
               accentClass="text-secondary"
-              trend={
-                (platform?.deployments.successRate ?? 100) >= 90 ? 'up' : 'down'
-              }
+              trend={platform?.deployments.successRate != null ? (platform.deployments.successRate >= 90 ? 'up' : 'down') : null}
             />
             <MetricCard
               label="Monthly Cloud Cost"
-              value={`$${curMonthCost.toFixed(2)}`}
+              value={curMonthCost === undefined ? '—' : `$${curMonthCost.toFixed(2)}`}
               sub={
                 costDeltaPct !== null
                   ? `${Number(costDeltaPct) >= 0 ? '+' : ''}${costDeltaPct}% vs last month`
@@ -446,12 +443,16 @@ export const DashboardPage: React.FC = () => {
                   <div className="p-3 bg-bg-secondary rounded-xl border border-border">
                     <p className="text-[10px] text-text-muted mb-1">Total Accumulated</p>
                     <p className="text-xl font-extrabold text-emerald-400">
-                      ${(platform?.cost.totalSpendUsd ?? costSummary?.totalCostUsd ?? 0).toFixed(2)}
+                      {(platform?.cost.totalSpendUsd ?? costSummary?.totalCostUsd) === undefined
+                        ? '—'
+                        : `$${(platform?.cost.totalSpendUsd ?? costSummary?.totalCostUsd ?? 0).toFixed(2)}`}
                     </p>
                   </div>
                   <div className="p-3 bg-bg-secondary rounded-xl border border-border">
                     <p className="text-[10px] text-text-muted mb-1">This Month</p>
-                    <p className="text-xl font-extrabold text-text">${curMonthCost.toFixed(2)}</p>
+                    <p className="text-xl font-extrabold text-text">
+                      {curMonthCost === undefined ? '—' : `$${curMonthCost.toFixed(2)}`}
+                    </p>
                   </div>
                 </div>
 
@@ -486,11 +487,12 @@ export const DashboardPage: React.FC = () => {
                     <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
                       Top Services by Spend
                     </p>
-                    {costSummary!.servicesCosts
+                    {[...costSummary!.servicesCosts]
                       .sort((a, b) => b.totalUsd - a.totalUsd)
                       .slice(0, 4)
                       .map((sc, i) => {
-                        const maxCost = costSummary!.servicesCosts[0].totalUsd || 1;
+                        const maxCost = [...costSummary!.servicesCosts]
+                          .sort((a, b) => b.totalUsd - a.totalUsd)[0]?.totalUsd || 1;
                         const pct = ((sc.totalUsd / maxCost) * 100).toFixed(0);
                         return (
                           <div key={sc.serviceId} className="flex items-center gap-2">

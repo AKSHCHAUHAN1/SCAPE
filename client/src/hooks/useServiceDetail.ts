@@ -16,6 +16,15 @@ export function useService(serviceId: string | undefined) {
   });
 }
 
+export function useServiceHealth(serviceId: string | undefined) {
+  return useQuery({
+    queryKey: ['serviceHealth', serviceId],
+    queryFn: () => (serviceId ? servicesApi.getServiceHealth(serviceId) : Promise.reject('No ID')),
+    enabled: Boolean(serviceId),
+    refetchInterval: 30000,
+  });
+}
+
 export function useServiceJobs(serviceId: string | undefined) {
   return useQuery({
     queryKey: ['serviceJobs', serviceId],

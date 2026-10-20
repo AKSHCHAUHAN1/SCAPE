@@ -53,8 +53,6 @@ SCAPE/
 ├── server/          # Node.js REST API (Express + TypeScript)
 ├── terraform/       # Terraform modules & environment configs
 ├── infra/           # Docker Compose, Dockerfiles, K8s manifests
-├── docs/            # Specifications, ADRs, API docs
-├── scripts/         # Dev helper scripts
 └── .github/         # CI/CD workflows, PR & issue templates
 ```
 
@@ -73,22 +71,31 @@ git clone https://github.com/AKSHCHAUHAN1/SCAPE.git
 cd SCAPE
 ```
 
-### 2. Set Up Environment
+### 2. Start local dependencies
 
 ```bash
+docker compose -f infra/docker-compose.yml up -d
+```
+
+### 3. Install and start the API
+
+```bash
+cd server
 cp .env.example .env
-cp client/.env.example client/.env
-cp server/.env.example server/.env
+npm ci
+npm run db:migrate
+npm run db:seed
+npm run dev
 ```
 
-### 3. Start Local Development
+Run these commands from a second terminal to start the portal:
 
 ```bash
-./scripts/setup.sh
+cd client
+cp .env.example .env
+npm ci
+npm run dev
 ```
-
-This installs dependencies, starts PostgreSQL and Redis, and launches the
-backend and frontend development servers.
 
 ### 4. Access
 
@@ -96,16 +103,19 @@ backend and frontend development servers.
 - **Backend API**: http://localhost:3000
 - **API Health**: http://localhost:3000/health
 
-### Stop and clean up
+### Stop local dependencies
 
-To stop the development servers and remove the PostgreSQL and Redis containers
-and their local data volumes:
+Stop the API and portal with `Ctrl+C`, then stop PostgreSQL and Redis:
 
 ```bash
-./scripts/cleanup.sh
+docker compose -f infra/docker-compose.yml down
 ```
 
-This preserves source code, environment files, and installed dependencies.
+The named database volumes are preserved. Add `-v` only when you want to remove local database data.
+
+### Cloud integrations
+
+Creating a cloud service requires a configured GitHub App, GitHub template repositories, an AWS backend role, an encrypted remote Terraform state bucket and lock table, and a public webhook URL. Bootstrap the state bucket, lock table, IAM roles, and GitHub OIDC provider using [the Terraform setup guide](./terraform/README.md). Configure the returned role ARNs as `AWS_PROVISIONING_ROLE_ARN` and `AWS_COST_EXPLORER_ROLE_ARN` in `server/.env`, and provide the GitHub App settings there. Deployment workflows use a per-service OIDC role created by Terraform. The application does not fabricate successful provisioning or cost data when these integrations are unavailable.
 
 ## Development Workflow
 
@@ -119,31 +129,24 @@ We follow **GitHub Flow**:
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for full guidelines.
 
-## Sprint Roadmap & Status
+## Delivery roadmap
 
-| Sprint | Weeks | Focus | Status |
-| :--- | :--- | :--- | :---: |
-| **Sprint 1–2** | 01–04 | Requirement Analysis & Relational Database Schemas | ✅ Done |
-| **Sprint 3–4** | 05–08 | Backend APIs & Terraform Provisioning Engine | ✅ Done |
-| **Sprint 5–6** | 09–12 | Web Portal & Service Request UI | ✅ Done |
-| **Sprint 7–8** | 13–16 | CI/CD Automation & GitHub App Repo Integration | ✅ Done |
-| **Sprint 9–10** | 17–20 | Dashboard: Health Monitoring, Cost & Deployment Feed | ✅ Done |
-| **Sprint 11–12** | 21–24 | Testing (Unit, Integration, E2E), Bug Fixing & Production Deploy (K8s/Docker) | ✅ Done |
+The project specification defines a 12-week plan with six two-week sprints: foundation, core provisioning, then portal and integrations. The repository contains the application modules and infrastructure configuration; running the end-to-end cloud workflow still depends on the external AWS and GitHub setup described above.
 
 ## Running Tests
 
 ### Client Tests (Unit & Component)
 ```bash
 cd client
-npm test        # Run Vitest test suite
+npm test        # Run Vitest suite
 npm run lint    # Run ESLint
-npm run build   # Production bundle verification
+npm run build   # Type-check and build the production bundle
 ```
 
 ### Server Tests (Unit & Integration)
 ```bash
 cd server
-npm test               # Run all 96 unit and integration tests
+npm test               # Run unit and integration suites
 npm run test:integration # Run API integration tests
 npm run lint           # Run ESLint
 npm run build          # Build TypeScript and copy migration/template assets

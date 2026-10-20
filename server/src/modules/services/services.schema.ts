@@ -15,6 +15,7 @@ export const createServiceSchema = z.object({
     .max(50)
     .optional()
     .default('ap-south-1'),
+  environment: z.enum(['development', 'staging', 'production']).default('development'),
 });
 
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;

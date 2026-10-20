@@ -2,6 +2,7 @@ import { query } from '../../database/index.js';
 import { AppError } from '../../middleware/errorHandler.js';
 import { getServiceById } from '../services/services.service.js';
 import { logAction } from '../audit/audit.service.js';
+import { GitHubIntegrator } from '../cicd/github-client.js';
 import type { CreateDeploymentInput, UpdateDeploymentInput } from './deployments.schema.js';
 
 interface DeploymentRow {
@@ -47,28 +48,43 @@ export async function createDeployment(
 ) {
   // Validate service exists and user has access
   const service = await getServiceById(input.serviceId, teamId, userRole);
+  if (service.status !== 'active') {
+    throw new AppError(409, 'SERVICE_NOT_READY', 'Only active services can be deployed');
+  }
+  if (!service.repositoryUrl) {
+    throw new AppError(409, 'REPOSITORY_NOT_CONFIGURED', 'This service has no connected GitHub repository');
+  }
 
   const result = await query<DeploymentRow>(
     `INSERT INTO deployments (service_id, triggered_by, github_run_id, status, commit_sha, branch, started_at)
-     VALUES ($1, $2, $3, 'running', $4, $5, NOW())
+     VALUES ($1, $2, NULL, 'pending', NULL, $3, NULL)
      RETURNING *`,
     [
       service.id,
       userId,
-      input.githubRunId || null,
-      input.commitSha || 'main',
       input.branch || 'main',
     ],
   );
 
   const deployment = result.rows[0];
 
+  try {
+    await new GitHubIntegrator().dispatchDeployment(service.repositoryUrl, input.branch || 'main');
+  } catch (err) {
+    await query(
+      `UPDATE deployments SET status = 'failed', completed_at = NOW() WHERE id = $1`,
+      [deployment.id],
+    );
+    const message = err instanceof Error ? err.message : 'GitHub workflow dispatch failed';
+    throw new AppError(502, 'DEPLOYMENT_TRIGGER_FAILED', `Could not start GitHub Actions deployment: ${message}`);
+  }
+
   await logAction({
     actorId: userId,
     action: 'deployment.trigger',
     resourceType: 'deployment',
     resourceId: deployment.id,
-    payload: { serviceId: service.id, branch: input.branch, commitSha: input.commitSha },
+    payload: { serviceId: service.id, branch: input.branch || 'main', source: 'github_actions_dispatch' },
   });
 
   return formatDeployment(deployment);

@@ -4,6 +4,7 @@ import { Layout } from '../../components/layout/Layout.js';
 import { ProvisioningProgress } from '../../components/feedback/ProvisioningProgress.js';
 import { useTemplates } from '../../hooks/useTemplates.js';
 import { useCreateService } from '../../hooks/useServices.js';
+import { useServiceJobs } from '../../hooks/useServiceDetail.js';
 import type { JobStatus } from '../../types/index.js';
 import {
   Sparkles,
@@ -35,12 +36,16 @@ export const CreateServicePage: React.FC = () => {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [serviceName, setServiceName] = useState('');
   const [region, setRegion] = useState('us-east-1');
-  const [environment, setEnvironment] = useState('staging');
+  const [environment, setEnvironment] = useState<'development' | 'staging' | 'production'>('development');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Completed provisioning state
   const [createdServiceId, setCreatedServiceId] = useState<string | null>(null);
-  const [provisioningStatus, setProvisioningStatus] = useState<JobStatus>('running');
+  const [createdJobId, setCreatedJobId] = useState<string | null>(null);
+  const [submittedStatus, setSubmittedStatus] = useState<JobStatus>('queued');
+  const { data: createdJobs = [] } = useServiceJobs(createdServiceId ?? undefined);
+  const activeJob = createdJobs.find((job) => job.id === createdJobId) ?? createdJobs[0];
+  const provisioningStatus = activeJob?.status ?? submittedStatus;
 
   // Selected template object
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) || templates[0];
@@ -78,18 +83,15 @@ export const CreateServicePage: React.FC = () => {
         name: serviceName,
         templateId,
         region,
+        environment,
       });
 
       setCreatedServiceId(res.service.id);
-      setProvisioningStatus('running');
+      setCreatedJobId(res.job.id);
+      setSubmittedStatus(res.job.status);
       setCurrentStep(4);
-
-      // Simulate completion progression for realistic demo flow
-      setTimeout(() => {
-        setProvisioningStatus('succeeded');
-      }, 7000);
-    } catch (err: any) {
-      const message = err.response?.data?.message || err.message || 'Failed to submit service creation';
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to submit service creation';
       setErrorMsg(message);
     }
   };
@@ -177,10 +179,12 @@ export const CreateServicePage: React.FC = () => {
                   const isNodeApi = tpl.name.toLowerCase().includes('api') || tpl.name.toLowerCase().includes('node');
 
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={tpl.id}
                       onClick={() => setSelectedTemplateId(tpl.id)}
-                      className={`p-6 rounded-2xl border-2 transition-all cursor-pointer relative flex flex-col justify-between ${
+                      aria-pressed={isSelected}
+                      className={`w-full p-6 rounded-2xl border-2 transition-all cursor-pointer relative flex flex-col justify-between text-left ${
                         isSelected
                           ? 'border-primary bg-primary/5 shadow-xl shadow-primary/10 ring-1 ring-primary/40'
                           : 'border-border bg-surface hover:border-border/80 hover:bg-surface/80'
@@ -224,7 +228,7 @@ export const CreateServicePage: React.FC = () => {
                           ))}
                         </div>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -255,11 +259,12 @@ export const CreateServicePage: React.FC = () => {
             <div className="bg-surface border border-border rounded-2xl p-6 space-y-5">
               {/* Service Name */}
               <div>
-                <label className="block text-xs font-semibold text-text mb-1.5">
+                <label htmlFor="service-name" className="block text-xs font-semibold text-text mb-1.5">
                   Service Name <span className="text-danger">*</span>
                 </label>
                 <div className="relative">
                   <input
+                    id="service-name"
                     type="text"
                     value={serviceName}
                     onChange={(e) => setServiceName(e.target.value.toLowerCase())}
@@ -309,7 +314,7 @@ export const CreateServicePage: React.FC = () => {
                   Environment
                 </label>
                 <div className="flex items-center gap-3">
-                  {['staging', 'development', 'production'].map((env) => (
+                  {(['development', 'staging', 'production'] as const).map((env) => (
                     <button
                       key={env}
                       type="button"
@@ -441,7 +446,10 @@ export const CreateServicePage: React.FC = () => {
             <ProvisioningProgress
               status={provisioningStatus}
               serviceName={serviceName}
-              errorMessage={errorMsg}
+              startedAt={activeJob?.startedAt}
+              completedAt={activeJob?.completedAt}
+              errorMessage={activeJob?.errorMessage}
+              logs={activeJob?.terraformLogs}
             />
           </div>
         )}

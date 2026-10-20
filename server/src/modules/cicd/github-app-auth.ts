@@ -90,6 +90,9 @@ function base64url(input: string): string {
 export async function getInstallationToken(): Promise<string | null> {
   // Fall back to PAT if App is not configured
   if (!config.github.appId || !config.github.privateKeyPath) {
+    if (config.nodeEnv === 'production') {
+      throw new Error('GitHub App credentials are required in production; personal access tokens are disabled.');
+    }
     const pat = process.env.GITHUB_TOKEN || process.env.GITHUB_APP_TOKEN;
     if (pat) {
       logger.debug('Using PAT fallback for GitHub authentication');
@@ -126,8 +129,15 @@ export async function getInstallationToken(): Promise<string | null> {
       return null;
     }
 
-    // Use the first installation (in a multi-org setup, you'd filter by org)
-    const installationId = installations[0].id;
+    const requestedId = Number(config.github.installationId);
+    const installation = requestedId
+      ? installations.find((candidate) => candidate.id === requestedId)
+      : installations[0];
+    if (!installation) {
+      logger.error({ requestedId }, 'Configured GitHub App installation was not found');
+      return null;
+    }
+    const installationId = installation.id;
 
     // Create installation access token
     const { data: tokenData } = await jwtOctokit.apps.createInstallationAccessToken({

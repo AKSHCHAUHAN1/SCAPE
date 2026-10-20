@@ -1,9 +1,9 @@
-import React, { ReactNode } from 'react';
+import React, { useEffect, useState, type ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
 import { Navbar } from './Navbar.js';
 import { Sidebar } from './Sidebar.js';
 import { ErrorBoundary } from '../ui/ErrorBoundary.js';
 import { useAuthStore } from '../../store/authStore.js';
-import { Navigate } from 'react-router-dom';
 
 interface LayoutProps {
   children: ReactNode;
@@ -12,28 +12,34 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children, requireAuth = true }) => {
   const { isAuthenticated } = useAuthStore();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileNavOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [mobileNavOpen]);
 
   if (requireAuth && !isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
   return (
-    <div className="min-h-screen bg-bg text-text flex flex-col font-sans relative selection:bg-primary/30 selection:text-white">
-      {/* Background ambient lighting */}
-      <div className="fixed top-0 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[128px] pointer-events-none" />
-      <div className="fixed bottom-0 right-1/4 w-96 h-96 bg-secondary/10 rounded-full blur-[128px] pointer-events-none" />
-
-      {/* Top Navbar */}
-      <Navbar />
-
-      {/* Main Body */}
-      <div className="flex-1 flex w-full relative z-10">
-        <Sidebar />
-
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
-          <ErrorBoundary>
-            {children}
-          </ErrorBoundary>
+    <div className="min-h-screen text-text selection:bg-primary/15">
+      <Navbar
+        onToggleSidebar={() => setMobileNavOpen((open) => !open)}
+        isSidebarOpen={mobileNavOpen}
+      />
+      <div className="mx-auto flex min-h-[calc(100vh-4.5rem)] w-full max-w-[1680px]">
+        <Sidebar mobileNavOpen={mobileNavOpen} onNavigate={() => setMobileNavOpen(false)} />
+        <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
+          <div className="mx-auto w-full max-w-[1440px]">
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </div>
         </main>
       </div>
     </div>

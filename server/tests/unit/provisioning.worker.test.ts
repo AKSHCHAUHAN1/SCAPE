@@ -74,11 +74,22 @@ vi.mock('../../src/modules/cicd/cicd-integrator.js', () => ({
   })),
 }));
 
+const mockCreateRepository = vi.fn();
+vi.mock('../../src/modules/cicd/github-client.js', () => ({
+  GitHubIntegrator: vi.fn().mockImplementation(() => ({
+    createRepositoryFromTemplate: (...args: any[]) => mockCreateRepository(...args),
+  })),
+}));
+
 import { processProvisioningJob } from '../../src/modules/provisioning/provisioning.worker.js';
 
 describe('ProvisioningWorker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCreateRepository.mockResolvedValue({
+      htmlUrl: 'https://github.com/org/test-svc',
+      fullName: 'org/test-svc',
+    });
   });
 
   it('successfully processes provisioning job and triggers CI/CD integration', async () => {

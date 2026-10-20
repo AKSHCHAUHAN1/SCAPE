@@ -3,20 +3,23 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore.js';
 import { authApi } from '../../api/auth.js';
 import {
-  Terminal,
-  Shield,
-  LogOut,
-  User as UserIcon,
   ChevronDown,
   Layers,
+  LogOut,
+  Menu,
+  Shield,
   Sparkles,
+  Terminal,
+  UserRound,
+  X,
 } from 'lucide-react';
 
 interface NavbarProps {
   onToggleSidebar?: () => void;
+  isSidebarOpen?: boolean;
 }
 
-export const Navbar: React.FC<NavbarProps> = () => {
+export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen = false }) => {
   const { user, logout } = useAuthStore();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const navigate = useNavigate();
@@ -25,110 +28,114 @@ export const Navbar: React.FC<NavbarProps> = () => {
     try {
       await authApi.logout();
     } catch {
-      // ignore network errors on signout
+      // Local auth state is cleared even if the API is temporarily unavailable.
     }
     logout();
     navigate('/login');
   };
 
   return (
-    <header className="sticky top-0 z-30 h-16 w-full bg-surface/80 backdrop-blur-md border-b border-border/80 px-4 sm:px-6 flex items-center justify-between">
-      {/* Brand & Breadcrumbs */}
-      <div className="flex items-center gap-3">
-        <Link to="/services" className="flex items-center gap-2.5 group">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white shadow-md shadow-primary/20 group-hover:scale-105 transition-transform">
-            <Terminal className="w-5 h-5" />
+    <header className="sticky top-0 z-30 flex h-[72px] w-full items-center justify-between border-b border-border bg-white/95 px-4 backdrop-blur-xl sm:px-6 lg:px-8">
+      <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+        {user && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            className="rounded-xl border border-border p-2 text-text-secondary transition-colors hover:bg-bg-secondary hover:text-text md:hidden"
+            aria-label={isSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={isSidebarOpen}
+            aria-controls="primary-navigation"
+          >
+            {isSidebarOpen ? <X className="h-[18px] w-[18px]" /> : <Menu className="h-[18px] w-[18px]" />}
+          </button>
+        )}
+        <Link to={user ? '/dashboard' : '/login'} className="group flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-gradient-to-br from-primary to-[#687bff] text-white shadow-lg shadow-primary/20 transition-transform group-hover:-translate-y-0.5">
+            <Terminal className="h-[19px] w-[19px]" strokeWidth={2} />
           </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-base tracking-tight bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent">
-                FORGE
-              </span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/20 text-primary font-semibold">
-                v1.0
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-[15px] font-bold tracking-[-0.035em] text-text">SCAPE</span>
+              <span className="hidden rounded-full border border-primary/10 bg-primary/5 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-primary sm:inline-flex">
+                Cloud platform
               </span>
             </div>
-            <p className="text-[10px] text-text-muted hidden sm:block">Cloud Provisioning Portal</p>
+            <p className="hidden text-[11px] leading-4 text-text-muted sm:block">Self-service infrastructure workspace</p>
           </div>
         </Link>
-
-        <div className="h-4 w-[1px] bg-border mx-2 hidden sm:block" />
-
-        {/* Environment Badge */}
-        <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Staging (AWS us-east-1)</span>
-        </div>
       </div>
 
-      {/* Right Controls */}
-      <div className="flex items-center gap-3">
-        <Link
-          to="/services/new"
-          className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-primary to-primary-hover hover:shadow-primary/30 text-white text-xs font-semibold rounded-xl shadow-sm transition-all"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          <span>Deploy Service</span>
-        </Link>
+      <div className="flex items-center gap-2 sm:gap-3">
+        {user && (
+          <Link
+            to="/services/new"
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-3.5 text-xs font-semibold text-white shadow-md shadow-primary/15 transition-all hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-lg sm:px-4"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Deploy service</span>
+            <span className="sm:hidden">Create</span>
+          </Link>
+        )}
 
-        {/* User Dropdown */}
         {user ? (
           <div className="relative">
             <button
-              onClick={() => setDropdownOpen(!dropdownOpen)}
-              className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-xl border border-border bg-bg-secondary/60 hover:bg-bg-secondary text-left transition-colors cursor-pointer"
+              type="button"
+              onClick={() => setDropdownOpen((open) => !open)}
+              className="flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-1.5 text-left transition-colors hover:bg-bg-secondary sm:pl-2 sm:pr-3"
+              aria-label="Open user menu"
+              aria-expanded={dropdownOpen}
             >
-              <div className="w-7 h-7 rounded-lg bg-primary/20 border border-primary/30 flex items-center justify-center text-primary font-semibold text-xs">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-[11px] font-bold text-primary">
                 {user.email.substring(0, 2).toUpperCase()}
-              </div>
-              <div className="hidden sm:block text-left">
-                <p className="text-xs font-medium text-text truncate max-w-[120px]">{user.email}</p>
-                <div className="flex items-center gap-1 text-[10px] text-text-muted capitalize">
-                  <Shield className="w-2.5 h-2.5 text-secondary" />
-                  <span>{user.role}</span>
-                </div>
-              </div>
-              <ChevronDown className="w-3.5 h-3.5 text-text-muted" />
+              </span>
+              <span className="hidden max-w-[150px] sm:block">
+                <span className="block truncate text-xs font-semibold leading-4 text-text">{user.email}</span>
+                <span className="flex items-center gap-1 text-[10px] capitalize leading-3 text-text-muted">
+                  <Shield className="h-2.5 w-2.5 text-secondary" />
+                  {user.role.replace('_', ' ')}
+                </span>
+              </span>
+              <ChevronDown className="hidden h-3.5 w-3.5 text-text-muted sm:block" />
             </button>
 
             {dropdownOpen && (
               <>
-                <div
-                  className="fixed inset-0 z-40"
+                <button
+                  type="button"
+                  className="fixed inset-0 z-40 cursor-default"
+                  aria-label="Close user menu"
                   onClick={() => setDropdownOpen(false)}
                 />
-                <div className="absolute right-0 mt-2 w-56 bg-surface border border-border rounded-2xl shadow-2xl z-50 p-2 text-xs">
-                  <div className="px-3 py-2 border-b border-border/80 mb-1">
-                    <p className="font-semibold text-text truncate">{user.email}</p>
-                    <p className="text-[11px] text-text-muted capitalize mt-0.5">Role: {user.role}</p>
+                <div className="absolute right-0 z-50 mt-2 w-60 rounded-2xl border border-border bg-white p-2 shadow-xl shadow-slate-900/10">
+                  <div className="mb-1 border-b border-border px-3 py-2.5">
+                    <p className="truncate text-xs font-semibold text-text">{user.email}</p>
+                    <p className="mt-0.5 text-[11px] capitalize text-text-muted">{user.role.replace('_', ' ')}</p>
                   </div>
-
                   <Link
                     to="/profile"
                     onClick={() => setDropdownOpen(false)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-text hover:bg-bg-secondary hover:text-primary transition-colors"
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-medium text-text-secondary hover:bg-bg-secondary hover:text-text"
                   >
-                    <UserIcon className="w-4 h-4 text-text-muted" />
-                    <span>My Profile & Team</span>
+                    <UserRound className="h-4 w-4 text-text-muted" />
+                    My Profile & Team
                   </Link>
-
                   <Link
                     to="/services"
                     onClick={() => setDropdownOpen(false)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-text hover:bg-bg-secondary hover:text-primary transition-colors"
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-medium text-text-secondary hover:bg-bg-secondary hover:text-text"
                   >
-                    <Layers className="w-4 h-4 text-text-muted" />
-                    <span>Service Catalog</span>
+                    <Layers className="h-4 w-4 text-text-muted" />
+                    Service Catalog
                   </Link>
-
-                  <div className="h-[1px] bg-border my-1" />
-
+                  <div className="my-1 h-px bg-border" />
                   <button
+                    type="button"
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-danger hover:bg-danger/10 transition-colors cursor-pointer text-left"
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-medium text-danger hover:bg-danger/5"
                   >
-                    <LogOut className="w-4 h-4" />
-                    <span>Sign Out</span>
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
                   </button>
                 </div>
               </>
@@ -137,9 +144,9 @@ export const Navbar: React.FC<NavbarProps> = () => {
         ) : (
           <Link
             to="/login"
-            className="px-3.5 py-1.5 text-xs font-semibold text-white bg-primary hover:bg-primary-hover rounded-xl shadow-md transition-all"
+            className="rounded-xl bg-primary px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-primary-hover"
           >
-            Sign In
+            Sign in
           </Link>
         )}
       </div>

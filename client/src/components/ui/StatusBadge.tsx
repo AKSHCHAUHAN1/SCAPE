@@ -86,6 +86,17 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
       };
       break;
 
+    case 'manual_intervention_required':
+      config = {
+        bg: 'bg-orange-500/10',
+        text: 'text-orange-700',
+        border: 'border-orange-500/25',
+        dot: 'bg-orange-500',
+        pulse: false,
+        label: 'Needs attention',
+      };
+      break;
+
     case 'decommissioned':
       config = {
         bg: 'bg-slate-500/10',
@@ -94,6 +105,17 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
         dot: 'bg-slate-400',
         pulse: false,
         label: 'Decommissioned',
+      };
+      break;
+
+    case 'decommissioning':
+      config = {
+        bg: 'bg-sky-500/10',
+        text: 'text-sky-700',
+        border: 'border-sky-500/25',
+        dot: 'bg-sky-500',
+        pulse: true,
+        label: 'Decommissioning',
       };
       break;
 

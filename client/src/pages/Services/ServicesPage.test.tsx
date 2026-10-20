@@ -3,13 +3,16 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ServicesPage } from './ServicesPage.js';
 import * as servicesHooks from '../../hooks/useServices.js';
+import * as costHooks from '../../hooks/useCosts.js';
 import { useAuthStore } from '../../store/authStore.js';
 
 vi.mock('../../hooks/useServices.js');
+vi.mock('../../hooks/useCosts.js');
 
 describe('ServicesPage Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(costHooks.useCostSummary).mockReturnValue({ data: undefined } as any);
     useAuthStore.getState().login('mock-jwt', {
       id: 'usr-1',
       email: 'dev@scape.dev',

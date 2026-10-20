@@ -41,8 +41,9 @@ describe('Auth Middleware - Unit Tests', () => {
         email: 'user@scape.io',
         role: 'developer' as const,
         teamId: 'team-1',
+        tokenUse: 'access' as const,
       };
-      const token = jwt.sign(payload, config.jwt.accessSecret, { expiresIn: '1h' });
+      const token = jwt.sign(payload, config.jwt.privateKey, { algorithm: 'RS256', expiresIn: '1h' });
 
       const req = {
         headers: { authorization: `Bearer ${token}` },

@@ -10,7 +10,6 @@ env:
   ECR_REPOSITORY: {{ ecrRepository }}
   ECS_CLUSTER: {{ ecsCluster }}
   ECS_SERVICE: {{ ecsService }}
-  ECS_TASK_DEFINITION: {{ taskDefinition }}
 
 permissions:
   id-token: write
@@ -50,13 +49,15 @@ jobs:
           ECR_REGISTRY: $\{{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: $\{{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
       - name: Deploy to ECS
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: $\{{ env.ECS_TASK_DEFINITION }}
-          service: $\{{ env.ECS_SERVICE }}
-          cluster: $\{{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
+        run: |
+          aws ecs update-service \\
+            --cluster "$ECS_CLUSTER" \\
+            --service "$ECS_SERVICE" \\
+            --desired-count 1 \\
+            --force-new-deployment
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"

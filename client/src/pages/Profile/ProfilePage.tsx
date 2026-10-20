@@ -33,24 +33,21 @@ export const ProfilePage: React.FC = () => {
       case 'admin':
         return [
           'Full cross-team visibility across all provisioned services',
-          'Read and filter global enterprise immutable audit logs',
+          'Read the append only platform audit log',
           'Trigger manual AWS Cost Explorer daily synchronization',
-          'Manage service templates and infrastructure modules',
           'Create, deploy, and decommission cloud services',
         ];
       case 'devops':
         return [
-          'Manage Terraform modules and infrastructure parameters',
           'Trigger manual AWS Cost Explorer synchronization',
-          'Retry failed provisioning jobs and monitor workers',
-          'Create, deploy, and manage team cloud services',
+          'Retry failed provisioning jobs and review Terraform output',
+          'Create, deploy, and decommission team cloud services',
         ];
       case 'team_lead':
         return [
-          'Full team service catalog and deployment management',
-          'Approve production service provisioning',
-          'Monitor team-wide cloud cost attribution',
-          'Trigger and monitor CI/CD deployments',
+          'View services and deployments for the assigned team',
+          'Monitor team cost attribution and service health',
+          'Create and trigger deployments for team services',
         ];
       default:
         return [
@@ -123,12 +120,10 @@ export const ProfilePage: React.FC = () => {
                 <span>Team Assignment</span>
               </span>
               <p className="font-semibold text-text">
-                {user?.teamId === 'a1b2c3d4-0001-4000-8000-000000000001'
-                  ? 'Platform Engineering'
-                  : 'Frontend Team'}
+                {user?.teamId ? 'Team assigned' : 'Awaiting team assignment'}
               </p>
               <span className="text-[10px] font-mono text-text-muted block mt-0.5">
-                {user?.teamId}
+                {user?.teamId || 'No team assigned'}
               </span>
             </div>
 
@@ -149,7 +144,11 @@ export const ProfilePage: React.FC = () => {
                 <span>Access Scope</span>
               </span>
               <p className="font-semibold text-text capitalize">
-                {user?.role === 'admin' ? 'Organization Administrator' : 'Team Scoped Access'}
+                {user?.role === 'admin'
+                  ? 'Organization Administrator'
+                  : user?.teamId
+                    ? 'Team Scoped Access'
+                    : 'No team resources until assigned'}
               </p>
             </div>
           </div>

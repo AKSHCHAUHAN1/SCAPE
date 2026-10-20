@@ -19,6 +19,8 @@ const apiClient = axios.create({
   withCredentials: true, // Send HttpOnly refresh token cookie
 });
 
+let refreshInFlight: Promise<string> | null = null;
+
 // Request interceptor: attach access token
 apiClient.interceptors.request.use((config) => {
   const token = useAuthStore.getState?.()?.accessToken;
@@ -33,14 +35,24 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const isAuthRequest = typeof originalRequest?.url === 'string' &&
+      ['/auth/login', '/auth/register', '/auth/refresh'].some((path) => originalRequest.url?.endsWith(path));
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest?._retry && !isAuthRequest) {
       originalRequest._retry = true;
 
       try {
-        const { data } = await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
-        useAuthStore.getState?.()?.setAccessToken(data.accessToken);
-        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+        if (!refreshInFlight) {
+          refreshInFlight = axios
+            .post<{ accessToken: string }>(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
+            .then(({ data }) => data.accessToken)
+            .finally(() => {
+              refreshInFlight = null;
+            });
+        }
+        const accessToken = await refreshInFlight;
+        useAuthStore.getState?.()?.setAccessToken(accessToken);
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return apiClient(originalRequest);
       } catch {
         useAuthStore.getState?.()?.logout();

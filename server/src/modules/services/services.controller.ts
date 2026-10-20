@@ -50,6 +50,20 @@ export async function getById(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+/** GET /services/:id/health */
+export async function getHealth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const health = await servicesService.getServiceHealth(
+      req.params.id as string,
+      req.user!.teamId,
+      req.user!.role,
+    );
+    res.json(health);
+  } catch (err) {
+    next(err);
+  }
+}
+
 /**
  * DELETE /services/:id
  */
@@ -61,7 +75,7 @@ export async function remove(req: Request, res: Response, next: NextFunction) {
       req.user!.teamId,
       req.user!.role,
     );
-    res.json(result);
+    res.status(202).json(result);
   } catch (err) {
     next(err);
   }

@@ -2,9 +2,7 @@ import { z } from 'zod';
 
 export const createDeploymentSchema = z.object({
   serviceId: z.string().uuid(),
-  commitSha: z.string().min(7).max(40).optional(),
-  branch: z.string().min(1).max(255).default('main'),
-  githubRunId: z.string().max(100).optional(),
+  branch: z.literal('main').default('main'),
 });
 
 export const updateDeploymentSchema = z.object({

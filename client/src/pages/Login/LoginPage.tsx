@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import {
   Lock,
   Mail,
-  Shield,
   ArrowRight,
   AlertCircle,
   CheckCircle2,
@@ -12,7 +11,6 @@ import {
 } from 'lucide-react';
 import { authApi } from '../../api/auth.js';
 import { useAuthStore } from '../../store/authStore.js';
-import type { UserRole } from '../../types/index.js';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -22,8 +20,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [role, setRole] = useState<UserRole>('developer');
-  const [teamId, setTeamId] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,8 +58,6 @@ export default function LoginPage() {
         const data = await authApi.register({
           email,
           password,
-          role,
-          teamId: teamId.trim() || undefined,
         });
         loginToStore(data.accessToken, data.user);
         setSuccessMsg('Account created successfully. Redirecting...');
@@ -93,7 +87,7 @@ export default function LoginPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-secondary shadow-lg shadow-primary/25 mb-4">
             <Terminal className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+          <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-primary to-[#18284f] bg-clip-text text-transparent">
             SCAPE
           </h1>
           <p className="text-text-secondary text-sm mt-1">
@@ -204,36 +198,8 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
-                  Platform Role
-                </label>
-                <div className="relative">
-                  <Shield className="w-5 h-5 text-text-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as UserRole)}
-                    className="w-full bg-bg/70 border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl py-2.5 pl-11 pr-4 text-sm text-text outline-none appearance-none"
-                  >
-                    <option value="developer">Developer</option>
-                    <option value="team_lead">Team Lead</option>
-                    <option value="devops">DevOps Engineer</option>
-                    <option value="admin">Administrator</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary uppercase tracking-wider mb-1.5">
-                  Team ID <span className="text-text-muted normal-case">(Optional UUID)</span>
-                </label>
-                <input
-                  type="text"
-                  value={teamId}
-                  onChange={(e) => setTeamId(e.target.value)}
-                  placeholder="e.g. 11111111-1111-1111-1111-111111111111"
-                  className="w-full bg-bg/70 border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 rounded-xl py-2.5 px-4 text-sm text-text placeholder-text-muted transition-all outline-none"
-                />
+              <div className="rounded-xl border border-primary/10 bg-primary/5 px-3.5 py-3 text-xs leading-relaxed text-text-secondary">
+                New accounts start with developer access. A platform administrator assigns team membership and any elevated role.
               </div>
             </>
           )}
@@ -254,39 +220,10 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {/* Quick Demo Accounts */}
-        <div className="mt-6 pt-5 border-t border-border/60">
-          <p className="text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-2 text-center">
-            Quick Demo Sign-In
-          </p>
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            {[
-              { label: 'Admin', email: 'admin@scape.dev', role: 'admin' },
-              { label: 'DevOps', email: 'devops@scape.dev', role: 'devops' },
-              { label: 'Team Lead', email: 'lead@scape.dev', role: 'team_lead' },
-              { label: 'Developer', email: 'dev@scape.dev', role: 'developer' },
-            ].map((acc) => (
-              <button
-                key={acc.role}
-                type="button"
-                onClick={() => {
-                  setMode('login');
-                  setEmail(acc.email);
-                  setPassword('Password123!');
-                }}
-                className="p-2 rounded-xl bg-bg-secondary hover:bg-bg-tertiary border border-border text-left transition-colors cursor-pointer"
-              >
-                <span className="font-semibold text-text block">{acc.label}</span>
-                <span className="text-[10px] text-text-muted truncate block">{acc.email}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Footer Security Badging */}
         <div className="mt-6 pt-4 border-t border-border/50 flex items-center justify-center gap-2 text-xs text-text-muted">
           <Sparkles className="w-4 h-4 text-primary" />
-          <span>Secured with JWT HttpOnly Tokens & RBAC Policies</span>
+          <span>RS256 authentication · role based access</span>
         </div>
       </div>
     </div>

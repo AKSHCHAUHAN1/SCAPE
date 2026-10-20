@@ -20,6 +20,24 @@ interface JobRow {
   created_at: Date;
 }
 
+function formatJob(job: JobRow) {
+  return {
+    id: job.id,
+    serviceId: job.service_id,
+    triggeredBy: job.triggered_by,
+    status: job.status,
+    terraformWorkspace: job.terraform_workspace,
+    terraformRunId: job.terraform_run_id,
+    terraformLogs: job.terraform_logs ?? null,
+    terraformPlanOutput: job.terraform_plan_output ?? null,
+    timeoutAt: job.timeout_at ?? null,
+    errorMessage: job.error_message,
+    startedAt: job.started_at,
+    completedAt: job.completed_at,
+    createdAt: job.created_at,
+  };
+}
+
 /**
  * Get all jobs for a specific service.
  */
@@ -32,7 +50,7 @@ export async function getJobsByServiceId(serviceId: string, teamId: string, user
     [serviceId],
   );
 
-  return result.rows;
+  return result.rows.map(formatJob);
 }
 
 /**
@@ -53,7 +71,7 @@ export async function getJobById(jobId: string, teamId: string, userRole: string
   // Verify access via service
   await getServiceById(job.service_id, teamId, userRole);
 
-  return job;
+  return formatJob(job);
 }
 
 /**
@@ -67,7 +85,7 @@ export async function retryJob(jobId: string, userId: string, teamId: string, us
   }
 
   // Ensure service exists
-  const service = await getServiceById(job.service_id, teamId, userRole);
+  const service = await getServiceById(job.serviceId, teamId, userRole);
   
   // Get template path
   const templateResult = await query(
@@ -92,6 +110,7 @@ export async function retryJob(jobId: string, userId: string, teamId: string, us
     templateId: service.templateId,
     terraformModulePath: templateResult.rows[0].terraform_module_path,
     region: service.region,
+    environment: service.environment,
     teamId: service.teamId,
     triggeredBy: userId,
   });
@@ -103,5 +122,5 @@ export async function retryJob(jobId: string, userId: string, teamId: string, us
     resourceId: job.id,
   });
 
-  return updateResult.rows[0];
+  return formatJob(updateResult.rows[0]);
 }
