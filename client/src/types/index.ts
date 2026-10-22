@@ -54,6 +54,7 @@ export interface ServiceTemplate {
   description: string;
   cloudProvider: 'aws' | 'gcp';
   resourceTypes: string[];
+  templateType?: 'static-frontend' | 'nodejs-api' | 'python-api' | 'container-api';
   isActive: boolean;
   createdAt: string;
 }
@@ -70,6 +71,11 @@ export interface Service {
   environment: 'development' | 'staging' | 'production';
   repositoryUrl: string | null;
   serviceEndpoint: string | null;
+  computeMode?: 'fargate' | 'ec2';
+  ec2InstanceType?: string | null;
+  requestedVcpu?: number;
+  requestedMemoryGiB?: number;
+  workloadProfile?: 'bursty' | 'balanced' | 'compute' | 'memory';
   createdAt: string;
   updatedAt: string;
 }
@@ -158,6 +164,11 @@ export interface CreateServiceInput {
   templateId: string;
   region: string;
   environment: 'development' | 'staging' | 'production';
+  computeMode?: 'fargate' | 'ec2';
+  ec2InstanceType?: string;
+  requestedVcpu?: number;
+  requestedMemoryGiB?: number;
+  workloadProfile?: 'bursty' | 'balanced' | 'compute' | 'memory';
 }
 
 export interface CreateServiceResponse {

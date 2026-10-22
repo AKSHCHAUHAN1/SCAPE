@@ -234,7 +234,7 @@ export class CicdIntegrator {
       awsRoleArn,
     };
 
-    if (templateType === 'nodejs-api') {
+    if (templateType !== 'static-frontend') {
       return {
         ...baseData,
         ecrRepository: String(outputs.ecr_repository_url?.value || outputs.repository_url?.value || '').split('/').at(-1) || '',

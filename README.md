@@ -56,6 +56,8 @@ SCAPE/
 └── .github/         # CI/CD workflows, PR & issue templates
 ```
 
+The capstone demo runs with Docker Compose and local Node.js processes. It does not use the optional Kubernetes manifests, and this repository does not create a Kubernetes cluster.
+
 ## Quick Start
 
 ### Prerequisites
@@ -103,6 +105,8 @@ npm run dev
 - **Backend API**: http://localhost:3000
 - **API Health**: http://localhost:3000/health
 
+For the local capstone demo, sign in with `admin@scape.dev` and password `Password123!`. These seeded credentials are for local development only. Open **Create Service** to browse the service catalog, use the architecture advisor, choose a region and compute profile, and select **Preview locally**. A local preview does not contact AWS or GitHub and does not create infrastructure.
+
 ### Stop local dependencies
 
 Stop the API and portal with `Ctrl+C`, then stop PostgreSQL and Redis:
@@ -115,7 +119,11 @@ The named database volumes are preserved. Add `-v` only when you want to remove 
 
 ### Cloud integrations
 
-Creating a cloud service requires a configured GitHub App, GitHub template repositories, an AWS backend role, an encrypted remote Terraform state bucket and lock table, and a public webhook URL. Bootstrap the state bucket, lock table, IAM roles, and GitHub OIDC provider using [the Terraform setup guide](./terraform/README.md). Configure the returned role ARNs as `AWS_PROVISIONING_ROLE_ARN` and `AWS_COST_EXPLORER_ROLE_ARN` in `server/.env`, and provide the GitHub App settings there. Deployment workflows use a per-service OIDC role created by Terraform. The application does not fabricate successful provisioning or cost data when these integrations are unavailable.
+Requesting real cloud provisioning requires a configured GitHub App, GitHub template repositories, an AWS backend role, an encrypted remote Terraform state bucket and lock table, and a public HTTPS webhook URL. A custom domain is optional for local previews. For a local API connected to GitHub, use an HTTPS tunnel and set `SCAPE_PUBLIC_URL` to its public URL. Bootstrap the state bucket, lock table, IAM roles, and GitHub OIDC provider using [the Terraform setup guide](./terraform/README.md). Configure the returned role ARNs as `AWS_PROVISIONING_ROLE_ARN` and `AWS_COST_EXPLORER_ROLE_ARN` in `server/.env`, then provide the GitHub App settings there. The AWS region is selected for each service in the wizard.
+
+The catalog includes **Static Frontend**, **Node.js API**, **Python FastAPI**, and **Containerized API**. Create a GitHub template repository for each enabled type and set `GITHUB_STATIC_FRONTEND_TEMPLATE_REPO`, `GITHUB_NODEJS_API_TEMPLATE_REPO`, `GITHUB_PYTHON_API_TEMPLATE_REPO`, and `GITHUB_CONTAINER_API_TEMPLATE_REPO`. The API templates need a Dockerfile that listens on port 3000 and serves `/health`; the Python template also needs `requirements.txt` and tests runnable with `pytest`. The containerized template can use any runtime that meets the same container contract. `AWS_REGION` in the server environment is used for the control plane and Terraform state; it does not select a service region.
+
+For API templates, users can choose Fargate task capacity or an EC2-backed ECS host and enter CPU and memory requirements. The advisor recommends from a small offline starter catalog; it does not return live prices or guarantee that a type is enabled in a selected region/account. AWS validates the actual choice when provisioning. Confirm current type availability and pricing before requesting AWS resources. API stacks include an RDS database and load balancer, which can continue to incur charges while the service is idle; EC2 mode also keeps one host per service. Decommission a cloud demo service when finished. Local previews create none of these resources.
 
 ## Development Workflow
 
@@ -125,7 +133,7 @@ We follow **GitHub Flow**:
 2. Make changes, commit with conventional commits
 3. Push and open a Pull Request
 4. Get at least 1 approval from a teammate
-5. Merge to `main` → auto-deploys to staging
+5. Merge to `main` → CI runs build, lint, and tests
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for full guidelines.
 

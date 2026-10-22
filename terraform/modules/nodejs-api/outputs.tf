@@ -15,12 +15,22 @@ output "deploy_role_arn" {
 
 output "resource_arns" {
   description = "List of ARNs for all provisioned resources"
-  value = [
+  value = concat([
     aws_ecs_cluster.main.arn,
     aws_ecr_repository.app.arn,
     aws_lb.main.arn,
     aws_db_instance.postgres.arn
-  ]
+  ], var.compute_mode == "ec2" ? [aws_autoscaling_group.ecs[0].arn] : [])
+}
+
+output "compute_mode" {
+  description = "Selected ECS compute platform"
+  value       = var.compute_mode
+}
+
+output "ec2_instance_type" {
+  description = "Selected EC2 instance type, when EC2 compute is enabled"
+  value       = var.compute_mode == "ec2" ? var.ec2_instance_type : null
 }
 
 output "repository_url" {

@@ -9,6 +9,7 @@ interface TemplateRow {
   resource_types: string[];
   terraform_module_path: string;
   cicd_template_path: string;
+  template_type: string;
   is_active: boolean;
   created_at: Date;
 }
@@ -19,7 +20,7 @@ interface TemplateRow {
 export async function getAllTemplates() {
   const result = await query<TemplateRow>(
     `SELECT id, name, description, cloud_provider, resource_types,
-            terraform_module_path, cicd_template_path, is_active, created_at
+            terraform_module_path, cicd_template_path, template_type, is_active, created_at
      FROM service_templates
      WHERE is_active = true
      ORDER BY name`,
@@ -33,6 +34,7 @@ export async function getAllTemplates() {
     resourceTypes: t.resource_types,
     terraformModulePath: t.terraform_module_path,
     cicdTemplatePath: t.cicd_template_path,
+    templateType: t.template_type,
     isActive: t.is_active,
     createdAt: t.created_at,
   }));
@@ -44,7 +46,7 @@ export async function getAllTemplates() {
 export async function getTemplateById(templateId: string) {
   const result = await query<TemplateRow>(
     `SELECT id, name, description, cloud_provider, resource_types,
-            terraform_module_path, cicd_template_path, is_active, created_at
+            terraform_module_path, cicd_template_path, template_type, is_active, created_at
      FROM service_templates
      WHERE id = $1`,
     [templateId],
@@ -63,6 +65,7 @@ export async function getTemplateById(templateId: string) {
     resourceTypes: t.resource_types,
     terraformModulePath: t.terraform_module_path,
     cicdTemplatePath: t.cicd_template_path,
+    templateType: t.template_type,
     isActive: t.is_active,
     createdAt: t.created_at,
   };

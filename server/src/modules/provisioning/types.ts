@@ -62,9 +62,15 @@ export interface ProvisioningJobData {
   serviceId: string;
   serviceName: string;
   templateId: string;
+  templateType?: string;
   terraformModulePath: string;
   region: string;
   environment?: string;
+  computeMode?: 'fargate' | 'ec2';
+  ec2InstanceType?: string;
+  requestedVcpu?: number;
+  requestedMemoryGiB?: number;
+  workloadProfile?: 'bursty' | 'balanced' | 'compute' | 'memory';
   teamId: string;
   triggeredBy: string;
   repositoryUrl?: string | null;
@@ -132,6 +138,10 @@ export interface EnvironmentConfig {
   modulePath: string;
   region: string;
   environment: string;
+  computeMode?: 'fargate' | 'ec2';
+  ec2InstanceType?: string;
+  requestedVcpu?: number;
+  requestedMemoryGiB?: number;
   ownerTeam: string;
   githubRepository: string;
   tags: Record<string, string>;

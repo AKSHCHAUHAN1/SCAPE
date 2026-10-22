@@ -257,7 +257,7 @@ export const ServiceDetailPage: React.FC = () => {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
               <div className="p-4 rounded-2xl bg-surface border border-border">
                 <div className="flex items-center gap-2 text-xs text-text-muted mb-2">
                   <Server className="w-4 h-4 text-primary" /> Service state
@@ -282,6 +282,19 @@ export const ServiceDetailPage: React.FC = () => {
                 </div>
                 <p className="text-sm font-mono font-semibold text-text">{service.region}</p>
               </div>
+              {service.templateName !== 'Static Frontend' && (
+                <div className="p-4 rounded-2xl bg-surface border border-border">
+                  <div className="flex items-center gap-2 text-xs text-text-muted mb-2">
+                    <Server className="w-4 h-4 text-secondary" /> Compute
+                  </div>
+                  <p className="text-sm font-semibold text-text">
+                    {service.computeMode === 'ec2' ? `EC2 · ${service.ec2InstanceType ?? 'custom'}` : 'AWS Fargate'}
+                  </p>
+                  <p className="mt-1 text-[11px] text-text-muted">
+                    {service.requestedVcpu} vCPU · {service.requestedMemoryGiB} GiB
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="p-5 rounded-2xl bg-surface border border-border">

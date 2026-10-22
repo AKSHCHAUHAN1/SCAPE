@@ -67,6 +67,8 @@ export const config = {
     repositoryOwner: process.env.GITHUB_REPOSITORY_OWNER || '',
     templateOwner: process.env.GITHUB_TEMPLATE_OWNER || '',
     nodejsApiTemplateRepo: process.env.GITHUB_NODEJS_API_TEMPLATE_REPO || '',
+    pythonApiTemplateRepo: process.env.GITHUB_PYTHON_API_TEMPLATE_REPO || '',
+    containerApiTemplateRepo: process.env.GITHUB_CONTAINER_API_TEMPLATE_REPO || '',
     staticFrontendTemplateRepo: process.env.GITHUB_STATIC_FRONTEND_TEMPLATE_REPO || '',
   },
 

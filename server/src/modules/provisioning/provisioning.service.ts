@@ -89,7 +89,7 @@ export async function retryJob(jobId: string, userId: string, teamId: string, us
   
   // Get template path
   const templateResult = await query(
-    'SELECT terraform_module_path FROM service_templates WHERE id = $1',
+    'SELECT terraform_module_path, template_type FROM service_templates WHERE id = $1',
     [service.templateId]
   );
 
@@ -108,9 +108,14 @@ export async function retryJob(jobId: string, userId: string, teamId: string, us
     serviceId: service.id,
     serviceName: service.name,
     templateId: service.templateId,
+    templateType: templateResult.rows[0].template_type,
     terraformModulePath: templateResult.rows[0].terraform_module_path,
     region: service.region,
     environment: service.environment,
+    computeMode: service.computeMode ?? 'fargate',
+    ec2InstanceType: service.ec2InstanceType ?? undefined,
+    requestedVcpu: service.requestedVcpu ?? 1,
+    requestedMemoryGiB: service.requestedMemoryGiB ?? 2,
     teamId: service.teamId,
     triggeredBy: userId,
   });

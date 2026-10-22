@@ -21,7 +21,7 @@ export interface WorkflowTemplateData {
   awsRoleArn?: string;
 }
 
-export type ServiceTemplateType = 'nodejs-api' | 'static-frontend';
+export type ServiceTemplateType = 'nodejs-api' | 'python-api' | 'container-api' | 'static-frontend';
 
 // ---------------------------------------------------------------------------
 // GitHub Commit Payload

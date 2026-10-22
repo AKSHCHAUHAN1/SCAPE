@@ -7,6 +7,11 @@ data "aws_availability_zones" "available" {
 
 data "aws_caller_identity" "current" {}
 
+data "aws_ssm_parameter" "ecs_ami" {
+  count = var.compute_mode == "ec2" ? 1 : 0
+  name  = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
+}
+
 locals {
   service_slug = "${substr(replace(lower(var.service_name), "/[^a-z0-9-]/", "-"), 0, 14)}-${substr(replace(var.service_id, "-", ""), 0, 8)}"
   tags = merge(var.tags, {
@@ -86,6 +91,35 @@ resource "aws_ecs_cluster" "main" {
   tags = local.tags
 }
 
+resource "aws_iam_role" "ecs_instance" {
+  count = var.compute_mode == "ec2" ? 1 : 0
+  name  = "${local.service_slug}-ecs-instance"
+  path  = "/scape/services/"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+    }]
+  })
+  tags = local.tags
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_instance" {
+  count      = var.compute_mode == "ec2" ? 1 : 0
+  role       = aws_iam_role.ecs_instance[0].name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
+resource "aws_iam_instance_profile" "ecs_instance" {
+  count = var.compute_mode == "ec2" ? 1 : 0
+  name  = "${local.service_slug}-ecs-instance"
+  path  = "/scape/services/"
+  role  = aws_iam_role.ecs_instance[0].name
+  tags  = local.tags
+}
+
 resource "aws_ecr_repository" "app" {
   name                 = "${local.service_slug}-repo"
   image_tag_mutability = "MUTABLE"
@@ -144,10 +178,10 @@ resource "aws_iam_role" "ecs_task" {
 
 resource "aws_ecs_task_definition" "app" {
   family                   = "${local.service_slug}-task"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
+  network_mode             = var.compute_mode == "ec2" ? "bridge" : "awsvpc"
+  requires_compatibilities = [var.compute_mode == "ec2" ? "EC2" : "FARGATE"]
+  cpu                      = tostring(var.requested_vcpu * 1024)
+  memory                   = tostring(var.requested_memory_gib * 1024)
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
@@ -157,7 +191,7 @@ resource "aws_ecs_task_definition" "app" {
     essential = true
     portMappings = [{
       containerPort = 3000
-      hostPort      = 3000
+      hostPort      = var.compute_mode == "ec2" ? 3000 : 0
       protocol      = "tcp"
     }]
     environment = [
@@ -222,6 +256,77 @@ resource "aws_security_group" "ecs" {
   tags = local.tags
 }
 
+resource "aws_launch_template" "ecs" {
+  count         = var.compute_mode == "ec2" ? 1 : 0
+  name_prefix   = "${local.service_slug}-ecs-"
+  image_id      = data.aws_ssm_parameter.ecs_ami[0].value
+  instance_type = var.ec2_instance_type
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.ecs_instance[0].arn
+  }
+  network_interfaces {
+    device_index                = 0
+    associate_public_ip_address = true
+    security_groups             = [aws_security_group.ecs.id]
+  }
+  user_data = base64encode(<<-EOT
+    #!/bin/bash
+    echo ECS_CLUSTER=${aws_ecs_cluster.main.name} >> /etc/ecs/ecs.config
+  EOT
+  )
+  tag_specifications {
+    resource_type = "instance"
+    tags          = merge(local.tags, { Name = "${local.service_slug}-ecs" })
+  }
+  tag_specifications {
+    resource_type = "volume"
+    tags          = local.tags
+  }
+  tags       = local.tags
+  depends_on = [aws_iam_role_policy_attachment.ecs_instance]
+}
+
+resource "aws_autoscaling_group" "ecs" {
+  count                     = var.compute_mode == "ec2" ? 1 : 0
+  name                      = "${local.service_slug}-ecs"
+  min_size                  = 1
+  max_size                  = 1
+  desired_capacity          = 1
+  vpc_zone_identifier       = aws_subnet.public[*].id
+  health_check_type         = "EC2"
+  health_check_grace_period = 300
+  launch_template {
+    id      = aws_launch_template.ecs[0].id
+    version = "$Latest"
+  }
+  tag {
+    key                 = "Name"
+    value               = "${local.service_slug}-ecs"
+    propagate_at_launch = true
+  }
+  tag {
+    key                 = "ManagedBy"
+    value               = "scape"
+    propagate_at_launch = true
+  }
+  tag {
+    key                 = "forge:service-id"
+    value               = var.service_id
+    propagate_at_launch = true
+  }
+  tag {
+    key                 = "forge:team-id"
+    value               = var.owner_team
+    propagate_at_launch = true
+  }
+  tag {
+    key                 = "Environment"
+    value               = var.environment
+    propagate_at_launch = true
+  }
+  depends_on = [aws_ecs_cluster.main]
+}
+
 resource "aws_lb" "main" {
   name               = "${local.service_slug}-alb"
   internal           = false
@@ -235,7 +340,7 @@ resource "aws_lb_target_group" "app" {
   name        = "${local.service_slug}-tg"
   port        = 3000
   protocol    = "HTTP"
-  target_type = "ip"
+  target_type = var.compute_mode == "ec2" ? "instance" : "ip"
   vpc_id      = aws_vpc.main.id
   health_check {
     enabled             = true
@@ -303,7 +408,7 @@ resource "aws_ecs_service" "app" {
   name            = "${local.service_slug}-service"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.app.arn
-  launch_type     = "FARGATE"
+  launch_type     = var.compute_mode == "ec2" ? "EC2" : "FARGATE"
   desired_count   = 0
 
   deployment_minimum_healthy_percent = 0
@@ -315,10 +420,13 @@ resource "aws_ecs_service" "app" {
     rollback = false
   }
 
-  network_configuration {
-    subnets          = aws_subnet.public[*].id
-    security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = true
+  dynamic "network_configuration" {
+    for_each = var.compute_mode == "ec2" ? [] : [1]
+    content {
+      subnets          = aws_subnet.public[*].id
+      security_groups  = [aws_security_group.ecs.id]
+      assign_public_ip = true
+    }
   }
 
   load_balancer {
@@ -327,8 +435,12 @@ resource "aws_ecs_service" "app" {
     container_port   = 3000
   }
 
-  depends_on = [aws_lb_listener.http, aws_iam_role_policy_attachment.ecs_execution]
-  tags       = local.tags
+  depends_on = [
+    aws_lb_listener.http,
+    aws_iam_role_policy_attachment.ecs_execution,
+    aws_autoscaling_group.ecs,
+  ]
+  tags = local.tags
 }
 
 resource "aws_iam_role" "github_deploy" {

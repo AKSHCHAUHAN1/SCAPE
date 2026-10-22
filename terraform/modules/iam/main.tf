@@ -54,6 +54,9 @@ resource "aws_iam_role_policy" "provisioning" {
         Action = [
           "ec2:DescribeAvailabilityZones", "ec2:DescribeInternetGateways", "ec2:DescribeRouteTables",
           "ec2:DescribeSecurityGroups", "ec2:DescribeSubnets", "ec2:DescribeTags", "ec2:DescribeVpcs",
+          "ec2:DescribeImages", "ec2:DescribeLaunchTemplates", "ssm:GetParameter",
+          "autoscaling:DescribeAutoScalingGroups", "autoscaling:DescribeLaunchConfigurations",
+          "autoscaling:DescribeTags", "ec2:DescribeLaunchTemplateVersions",
           "elasticloadbalancing:DescribeListeners", "elasticloadbalancing:DescribeLoadBalancers",
           "elasticloadbalancing:DescribeTargetGroups", "ecs:DescribeClusters", "ecs:DescribeServices",
           "ecs:DescribeTaskDefinition", "ecs:ListTagsForResource", "ecr:DescribeRepositories",
@@ -69,6 +72,8 @@ resource "aws_iam_role_policy" "provisioning" {
         Action = [
           "ec2:CreateVpc", "ec2:CreateSubnet", "ec2:CreateInternetGateway", "ec2:CreateRouteTable",
           "ec2:CreateSecurityGroup", "ec2:CreateTags", "elasticloadbalancing:CreateLoadBalancer",
+          "ec2:CreateLaunchTemplate", "ec2:CreateLaunchTemplateVersion",
+          "autoscaling:CreateAutoScalingGroup", "autoscaling:CreateOrUpdateTags",
           "elasticloadbalancing:CreateTargetGroup", "elasticloadbalancing:CreateListener",
           "elasticloadbalancing:AddTags", "ecs:CreateCluster", "ecs:RegisterTaskDefinition",
           "ecs:CreateService", "ecs:TagResource", "ecr:CreateRepository", "ecr:TagResource",
@@ -133,7 +138,8 @@ resource "aws_iam_role_policy" "provisioning" {
         Action = [
           "ec2:DeleteVpc", "ec2:DeleteSubnet", "ec2:DeleteInternetGateway", "ec2:DetachInternetGateway",
           "ec2:DeleteRouteTable", "ec2:DeleteSecurityGroup", "ec2:ModifyVpcAttribute", "ec2:RevokeSecurityGroupIngress",
-          "ec2:RevokeSecurityGroupEgress", "ec2:DeleteTags", "elasticloadbalancing:DeleteLoadBalancer",
+          "ec2:RevokeSecurityGroupEgress", "ec2:DeleteTags", "ec2:DeleteLaunchTemplate",
+          "autoscaling:DeleteAutoScalingGroup", "autoscaling:DeleteTags", "autoscaling:UpdateAutoScalingGroup", "elasticloadbalancing:DeleteLoadBalancer",
           "elasticloadbalancing:DeleteTargetGroup", "elasticloadbalancing:DeleteListener",
           "elasticloadbalancing:RemoveTags", "ecs:DeleteCluster", "ecs:UpdateService", "ecs:DeleteService",
           "ecs:DeregisterTaskDefinition", "ecs:UntagResource", "ecr:DeleteRepository", "ecr:UntagResource",
@@ -181,11 +187,29 @@ resource "aws_iam_role_policy" "provisioning" {
         }
       },
       {
+        Sid      = "ManageServiceInstanceProfiles"
+        Effect   = "Allow"
+        Action   = ["iam:DeleteInstanceProfile", "iam:AddRoleToInstanceProfile", "iam:RemoveRoleFromInstanceProfile", "iam:GetInstanceProfile", "iam:UntagInstanceProfile"]
+        Resource = "arn:aws:iam::${var.aws_account_id}:instance-profile/scape/services/*"
+        Condition = {
+          StringEquals = { "aws:ResourceTag/forge:service-id" = "$${aws:PrincipalTag/forge:service-id}" }
+        }
+      },
+      {
+        Sid      = "CreateServiceInstanceProfiles"
+        Effect   = "Allow"
+        Action   = ["iam:CreateInstanceProfile", "iam:TagInstanceProfile"]
+        Resource = "arn:aws:iam::${var.aws_account_id}:instance-profile/scape/services/*"
+        Condition = {
+          StringEquals = { "aws:RequestTag/forge:service-id" = "$${aws:PrincipalTag/forge:service-id}" }
+        }
+      },
+      {
         Sid       = "PassServiceTaskRoles"
         Effect    = "Allow"
         Action    = ["iam:PassRole"]
         Resource  = "arn:aws:iam::${var.aws_account_id}:role/scape/services/*"
-        Condition = { StringEquals = { "iam:PassedToService" = "ecs-tasks.amazonaws.com" } }
+        Condition = { StringEquals = { "iam:PassedToService" = ["ecs-tasks.amazonaws.com", "ec2.amazonaws.com"] } }
       },
       {
         Sid       = "CreateRdsServiceLinkedRole"
@@ -193,6 +217,13 @@ resource "aws_iam_role_policy" "provisioning" {
         Action    = ["iam:CreateServiceLinkedRole"]
         Resource  = "arn:aws:iam::*:role/aws-service-role/rds.amazonaws.com/AWSServiceRoleForRDS"
         Condition = { StringEquals = { "iam:AWSServiceName" = "rds.amazonaws.com" } }
+      },
+      {
+        Sid       = "CreateAutoScalingServiceLinkedRole"
+        Effect    = "Allow"
+        Action    = ["iam:CreateServiceLinkedRole"]
+        Resource  = "arn:aws:iam::*:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"
+        Condition = { StringEquals = { "iam:AWSServiceName" = "autoscaling.amazonaws.com" } }
       }
     ]
   })

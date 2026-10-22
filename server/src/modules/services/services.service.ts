@@ -16,6 +16,11 @@ interface ServiceRow {
   environment: string;
   repository_url: string | null;
   service_endpoint: string | null;
+  compute_mode: 'fargate' | 'ec2';
+  ec2_instance_type: string | null;
+  requested_vcpu: number;
+  requested_memory_gib: number;
+  workload_profile: 'bursty' | 'balanced' | 'compute' | 'memory';
   created_at: Date;
   updated_at: Date;
 }
@@ -46,6 +51,11 @@ function formatService(s: ServiceRow) {
     environment: s.environment,
     repositoryUrl: s.repository_url,
     serviceEndpoint: s.service_endpoint,
+    computeMode: s.compute_mode ?? 'fargate',
+    ec2InstanceType: s.ec2_instance_type ?? null,
+    requestedVcpu: Number(s.requested_vcpu ?? 0.5),
+    requestedMemoryGiB: Number(s.requested_memory_gib ?? 1),
+    workloadProfile: s.workload_profile ?? 'bursty',
     createdAt: s.created_at,
     updatedAt: s.updated_at,
   };
@@ -63,6 +73,12 @@ export async function createService(
   userId: string,
   teamId: string,
 ) {
+  const computeMode = input.computeMode ?? 'fargate';
+  const requestedVcpu = input.requestedVcpu ?? 0.5;
+  const requestedMemoryGiB = input.requestedMemoryGiB ?? 1;
+  const workloadProfile = input.workloadProfile ?? 'bursty';
+  const environment = input.environment ?? 'development';
+
   // Verify user has a team
   if (!teamId) {
     throw new AppError(422, 'NO_TEAM', 'You must belong to a team to create a service');
@@ -70,7 +86,7 @@ export async function createService(
 
   // Verify template exists
   const template = await query(
-    'SELECT id, terraform_module_path FROM service_templates WHERE id = $1 AND is_active = true',
+    'SELECT id, terraform_module_path, template_type FROM service_templates WHERE id = $1 AND is_active = true',
     [input.templateId],
   );
   if (!template.rowCount || template.rowCount === 0) {
@@ -88,10 +104,24 @@ export async function createService(
 
   // Create service record (status: pending)
   const serviceResult = await query<ServiceRow>(
-    `INSERT INTO services (name, owner_id, team_id, template_id, status, region, environment)
-     VALUES ($1, $2, $3, $4, 'pending', $5, $6)
+    `INSERT INTO services
+       (name, owner_id, team_id, template_id, status, region, environment,
+        compute_mode, ec2_instance_type, requested_vcpu, requested_memory_gib, workload_profile)
+     VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, $8, $9, $10, $11)
      RETURNING *`,
-    [input.name, userId, teamId, input.templateId, input.region, input.environment],
+    [
+      input.name,
+      userId,
+      teamId,
+      input.templateId,
+      input.region,
+      environment,
+      computeMode,
+      input.ec2InstanceType ?? null,
+      requestedVcpu,
+      requestedMemoryGiB,
+      workloadProfile,
+    ],
   );
   const service = serviceResult.rows[0];
 
@@ -110,9 +140,15 @@ export async function createService(
     serviceId: service.id,
     serviceName: service.name,
     templateId: input.templateId,
+    templateType: template.rows[0].template_type,
     terraformModulePath: template.rows[0].terraform_module_path,
     region: input.region,
     environment: input.environment,
+    computeMode,
+    ec2InstanceType: input.ec2InstanceType,
+    requestedVcpu,
+    requestedMemoryGiB,
+    workloadProfile,
     teamId,
     triggeredBy: userId,
   }, { jobId: job.id });
@@ -123,7 +159,17 @@ export async function createService(
     action: 'service.create',
     resourceType: 'service',
     resourceId: service.id,
-    payload: { name: input.name, templateId: input.templateId, region: input.region, environment: input.environment },
+    payload: {
+      name: input.name,
+      templateId: input.templateId,
+      region: input.region,
+      environment,
+      computeMode,
+      ec2InstanceType: input.ec2InstanceType,
+      requestedVcpu,
+      requestedMemoryGiB,
+      workloadProfile,
+    },
   });
 
   return {

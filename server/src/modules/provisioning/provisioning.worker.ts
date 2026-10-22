@@ -32,8 +32,7 @@ import { CicdIntegrator } from '../cicd/cicd-integrator.js';
 import { GitHubIntegrator } from '../cicd/github-client.js';
 import type { ProvisioningJobData } from './types.js';
 import { APPLY_TIMEOUT_MS, DESTROY_TIMEOUT_MS } from './types.js';
-
-const stsClient = new STSClient({ region: config.aws.region });
+import type { ServiceTemplateType } from '../cicd/types.js';
 
 // ---------------------------------------------------------------------------
 // Job Status Helpers
@@ -112,7 +111,8 @@ async function updateServiceStatus(
 // STS Credential Helper
 // ---------------------------------------------------------------------------
 
-async function assumeProvisioningRole(serviceId: string, teamId: string) {
+async function assumeProvisioningRole(serviceId: string, teamId: string, region = config.aws.region) {
+  const stsClient = new STSClient({ region });
   const command = new AssumeRoleCommand({
     RoleArn: config.aws.provisioningRoleArn,
     RoleSessionName: `scape-provision-${serviceId.slice(0, 20)}`,
@@ -142,14 +142,14 @@ async function assumeProvisioningRole(serviceId: string, teamId: string) {
 // ---------------------------------------------------------------------------
 
 async function processDecommissionJob(job: Job<ProvisioningJobData>) {
-  const { jobId, serviceId, serviceName, repositoryUrl, triggeredBy } = job.data;
+  const { jobId, serviceId, serviceName, repositoryUrl, triggeredBy, region } = job.data;
   logger.info({ jobId, serviceId }, 'Starting service decommission job');
   await updateJobStatus(jobId, 'running');
   await updateServiceStatus(serviceId, 'decommissioning');
 
   try {
     const awsEnv: NodeJS.ProcessEnv = config.aws.provisioningRoleArn
-      ? (await assumeProvisioningRole(serviceId, job.data.teamId)) as unknown as NodeJS.ProcessEnv
+      ? (await assumeProvisioningRole(serviceId, job.data.teamId, region)) as unknown as NodeJS.ProcessEnv
       : {};
     const runner = new TerraformRunner(`terraform/environments/${serviceId}`);
     const result = await runner.destroy(serviceId, awsEnv, { timeoutMs: DESTROY_TIMEOUT_MS });
@@ -197,12 +197,20 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
       serviceId,
       serviceName,
       templateId,
+      templateType: queuedTemplateType,
       terraformModulePath,
       region,
       environment = config.nodeEnv,
+      computeMode = 'fargate',
+      ec2InstanceType,
+      requestedVcpu = 1,
+      requestedMemoryGiB = 2,
       teamId,
       triggeredBy,
     } = job.data;
+    const templateType = queuedTemplateType || (
+      terraformModulePath.includes('static-frontend') ? 'static-frontend' : 'nodejs-api'
+    );
 
     logger.info({ jobId, serviceId, serviceName }, 'Starting provisioning job');
 
@@ -213,20 +221,17 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
     await updateServiceStatus(serviceId, 'provisioning');
 
     try {
-      const templateType = terraformModulePath.includes('static-frontend')
-        ? 'static-frontend'
-        : 'nodejs-api';
       const github = new GitHubIntegrator();
       const sourceRepository = await github.createRepositoryFromTemplate({
         serviceId,
         serviceName,
-        templateType,
+        templateType: templateType as ServiceTemplateType,
       });
       await updateServiceStatus(serviceId, 'provisioning', sourceRepository.htmlUrl);
 
       // ── 1. Assume IAM Role ──
       const awsEnv: NodeJS.ProcessEnv = config.aws.provisioningRoleArn
-        ? (await assumeProvisioningRole(serviceId, teamId)) as unknown as NodeJS.ProcessEnv
+        ? (await assumeProvisioningRole(serviceId, teamId, region)) as unknown as NodeJS.ProcessEnv
         : {};
 
       // ── 2. Generate per-service environment directory ──
@@ -237,6 +242,10 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
         modulePath: terraformModulePath,
         region,
         environment,
+        computeMode,
+        ec2InstanceType,
+        requestedVcpu,
+        requestedMemoryGiB,
         ownerTeam: teamId,
         githubRepository: sourceRepository.fullName,
         tags: {
@@ -263,6 +272,14 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
         service_id: serviceId,
         region,
         environment,
+        ...(terraformModulePath.endsWith('nodejs-api')
+          ? {
+            compute_mode: computeMode,
+            ec2_instance_type: ec2InstanceType || 't3.small',
+            requested_vcpu: requestedVcpu,
+            requested_memory_gib: requestedMemoryGiB,
+          }
+          : {}),
         owner_team: teamId,
         tags: {
           'forge:service-id': serviceId,
@@ -295,7 +312,7 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
           serviceId,
           serviceName,
           templateId,
-          templateType,
+          templateType: templateType as ServiceTemplateType,
           repositoryUrl,
           region,
           terraformOutputs: outputs,

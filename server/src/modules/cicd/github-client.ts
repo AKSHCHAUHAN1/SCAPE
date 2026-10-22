@@ -90,9 +90,13 @@ export class GitHubIntegrator {
     serviceName: string;
     templateType: ServiceTemplateType;
   }): Promise<{ htmlUrl: string; fullName: string }> {
-    const templateRepo = payload.templateType === 'static-frontend'
-      ? config.github.staticFrontendTemplateRepo
-      : config.github.nodejsApiTemplateRepo;
+    const templateRepos: Record<ServiceTemplateType, string> = {
+      'static-frontend': config.github.staticFrontendTemplateRepo,
+      'nodejs-api': config.github.nodejsApiTemplateRepo,
+      'python-api': config.github.pythonApiTemplateRepo,
+      'container-api': config.github.containerApiTemplateRepo,
+    };
+    const templateRepo = templateRepos[payload.templateType];
     const owner = config.github.repositoryOwner;
     const templateOwner = config.github.templateOwner;
 

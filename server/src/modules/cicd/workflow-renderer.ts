@@ -63,7 +63,7 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION: ${data.awsRegion || 'us-east-1'}
+  AWS_REGION: ${data.awsRegion || ''}
 
 permissions:
   id-token: write
@@ -90,7 +90,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: \${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${data.awsRegion || 'us-east-1'}
+          aws-region: ${data.awsRegion || ''}
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -110,7 +110,7 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION: ${data.awsRegion || 'us-east-1'}
+  AWS_REGION: ${data.awsRegion || ''}
 
 permissions:
   id-token: write
@@ -131,11 +131,54 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: \${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${data.awsRegion || 'us-east-1'}
+          aws-region: ${data.awsRegion || ''}
       - name: Deploy to S3
         run: aws s3 sync dist/ s3://${data.s3BucketName || 'bucket'}/ --delete
       - name: Invalidate CloudFront
         run: aws cloudfront create-invalidation --distribution-id ${data.cloudFrontDistributionId || 'DISTRIBUTION_ID'} --paths "/*"
+`;
+
+const FALLBACK_CONTAINER_API = (data: WorkflowTemplateData) => `name: Deploy — ${data.serviceName}
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${data.awsRegion || ''}
+  ECR_REPOSITORY: ${data.ecrRepository || 'app'}
+  ECS_CLUSTER: ${data.ecsCluster || 'cluster'}
+  ECS_SERVICE: ${data.ecsService || 'service'}
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${data.awsRoleArn || '${{ secrets.AWS_DEPLOY_ROLE_ARN }}'}
+          aws-region: ${data.awsRegion || ''}
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: \${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: \${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --desired-count 1 --force-new-deployment
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
 `;
 
 // ---------------------------------------------------------------------------
@@ -172,7 +215,9 @@ export async function renderWorkflowYaml(
     if (templateName === 'static-frontend') {
       return FALLBACK_STATIC_FRONTEND(normalizedData);
     }
-    return FALLBACK_NODEJS_API(normalizedData);
+    return templateName === 'nodejs-api'
+      ? FALLBACK_NODEJS_API(normalizedData)
+      : FALLBACK_CONTAINER_API(normalizedData);
   }
 }
 
