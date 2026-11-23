@@ -124,10 +124,43 @@ export class GitHubIntegrator {
       );
       return { htmlUrl: data.html_url, fullName: data.full_name };
     } catch (err) {
-      const status = (err as { status?: number }).status;
+      const status = (err as { status?: number; response?: { status?: number } }).status
+        ?? (err as { response?: { status?: number } }).response?.status;
       if (status !== 422) throw err;
 
-      const { data } = await octokit.repos.get({ owner, repo: repositoryName });
+      const existingRepository = await octokit.repos
+        .get({ owner, repo: repositoryName })
+        .catch((lookupError) => {
+          const lookupStatus = (lookupError as { status?: number; response?: { status?: number } }).status
+            ?? (lookupError as { response?: { status?: number } }).response?.status;
+          if (lookupStatus !== 404) throw lookupError;
+
+          const responseData = (err as {
+            response?: {
+              data?: {
+                message?: string;
+                errors?: Array<string | { message?: string; code?: string; field?: string }>;
+              };
+            };
+          }).response?.data;
+          const validationDetails = responseData?.errors?.map((issue) => {
+            if (typeof issue === 'string') return issue;
+            return issue.message || [issue.field, issue.code].filter(Boolean).join(' ');
+          }).filter(Boolean) || [];
+          const reason = [responseData?.message, ...validationDetails].filter(Boolean).join(': ')
+            || (err instanceof Error ? err.message : 'GitHub returned a validation error.');
+
+          logger.error(
+            { template: `${templateOwner}/${templateRepo}`, repository: `${owner}/${repositoryName}`, status },
+            'GitHub rejected repository generation from template',
+          );
+          throw new Error(
+            `GitHub could not create ${owner}/${repositoryName} from template `
+            + `${templateOwner}/${templateRepo}: ${reason}`,
+          );
+        });
+      const { data } = existingRepository;
+
       if (!data.description?.includes(marker)) {
         throw new Error(`GitHub repository ${owner}/${repositoryName} already exists and is not owned by this service.`);
       }

@@ -62,7 +62,7 @@ The capstone demo runs with Docker Compose and local Node.js processes. It does 
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24 LTS
 - Docker & Docker Compose
 - Git
 
