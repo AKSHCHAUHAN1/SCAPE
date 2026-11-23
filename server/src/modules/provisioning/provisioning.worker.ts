@@ -348,14 +348,15 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
         );
       } else {
         // ── Apply failed → initiate rollback ──
+        const safeError = sanitizeTerraformLogs(result.error || 'Terraform apply failed', 12_000);
         logger.warn(
-          { jobId, serviceId, error: result.error },
+          { jobId, serviceId, error: safeError },
           'Provisioning failed, initiating rollback',
         );
 
         // Update logs before rollback
         await updateJobStatus(jobId, 'failed', {
-          errorMessage: result.error,
+          errorMessage: safeError,
           terraformLogs: sanitizedLogs,
         });
 
@@ -365,11 +366,11 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
           workspace: serviceId,
           modulePath: `terraform/environments/${serviceId}`,
           awsEnv,
-          applyError: result.error || 'Unknown apply error',
+          applyError: safeError,
           triggeredBy,
         });
 
-        throw new Error(`Provisioning failed: ${result.error}`);
+        throw new Error(`Provisioning failed: ${safeError}`);
       }
     } catch (err: any) {
       // Only update if not already updated by rollback coordinator

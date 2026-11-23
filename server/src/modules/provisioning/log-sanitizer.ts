@@ -50,6 +50,11 @@ const SENSITIVE_PATTERNS: { pattern: RegExp; replacement: string }[] = [
     pattern: /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
     replacement: '[REDACTED_JWT]',
   },
+  // AWS encodes authorization context into a long diagnostic token.
+  {
+    pattern: /(Encoded authorization failure message:\s*)[A-Za-z0-9_+=/.-]+/gi,
+    replacement: '$1[REDACTED_AWS_AUTHORIZATION_DETAILS]',
+  },
   // ARN with account ID — keep the ARN structure but redact account
   // We keep ARNs as they are useful for debugging, but redact if paired with secrets
 ];

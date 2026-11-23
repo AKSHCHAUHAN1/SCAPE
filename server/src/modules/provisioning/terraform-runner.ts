@@ -33,6 +33,14 @@ import { APPLY_TIMEOUT_MS, DESTROY_TIMEOUT_MS, INIT_TIMEOUT_MS } from './types.j
 const PLUGIN_CACHE_DIR = path.join(os.tmpdir(), 'scape-terraform-plugin-cache');
 
 /**
+ * Let local installs pin Terraform's absolute path when the API is launched
+ * from an IDE or service manager that does not inherit Homebrew's PATH.
+ */
+function getTerraformBinary(): string {
+  return process.env.TERRAFORM_BINARY?.trim() || 'terraform';
+}
+
+/**
  * Ensure the plugin cache directory exists.
  */
 async function ensurePluginCacheDir(): Promise<void> {
@@ -275,7 +283,7 @@ export class TerraformRunner {
         TF_PLUGIN_CACHE_DIR: PLUGIN_CACHE_DIR,
       };
 
-      const child: ChildProcess = spawn('terraform', [command, ...args], {
+      const child: ChildProcess = spawn(getTerraformBinary(), [command, ...args], {
         cwd: this.moduleDir,
         env: childEnv,
         stdio: ['ignore', 'pipe', 'pipe'],

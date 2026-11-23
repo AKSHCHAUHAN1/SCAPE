@@ -39,7 +39,9 @@ describe('State Manager', () => {
 
     it('should use the service ID in the state key', () => {
       const cfg = getStateBackendConfig(testServiceId);
-      expect(cfg.key).toContain(testServiceId);
+      expect(getStateKey(testServiceId)).toBe(`services/${testServiceId}/terraform.tfstate`);
+      expect(cfg.key).toBe(`services/${testServiceId}/terraform.tfstate`);
+      expect(cfg.workspaceKeyPrefix).toBe('services');
     });
 
     it('should have encryption enabled', () => {
@@ -53,7 +55,7 @@ describe('State Manager', () => {
       const args = getBackendConfigArgs(testServiceId);
 
       expect(Array.isArray(args)).toBe(true);
-      expect(args.length).toBe(5);
+      expect(args.length).toBe(6);
 
       // Check each arg starts with -backend-config=
       for (const arg of args) {
@@ -63,6 +65,7 @@ describe('State Manager', () => {
       // Check specific values
       expect(args.find(a => a.includes('bucket='))).toBeTruthy();
       expect(args.find(a => a.includes(`key=services/${testServiceId}/`))).toBeTruthy();
+      expect(args.find(a => a.includes('workspace_key_prefix=services'))).toBeTruthy();
       expect(args.find(a => a.includes('dynamodb_table='))).toBeTruthy();
       expect(args.find(a => a.includes('encrypt=true'))).toBeTruthy();
     });
@@ -78,7 +81,7 @@ describe('State Manager', () => {
     it('should return a valid S3 URI', () => {
       const uri = getStateFileUri(testServiceId);
       expect(uri).toMatch(/^s3:\/\//);
-      expect(uri).toContain(testServiceId);
+      expect(uri).toContain(`/services/${testServiceId}/services/${testServiceId}/terraform.tfstate`);
     });
   });
 });

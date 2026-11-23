@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
+import { spawn } from 'child_process';
 
 let failNextCommand = false;
 
@@ -78,6 +79,19 @@ describe('TerraformRunner', () => {
     expect(result.outputs).toBeDefined();
     expect(result.outputs?.service_endpoint?.value).toBe('http://test-alb.amazonaws.com');
     expect(result.logs).toContain('Command executed successfully.');
+  });
+
+  it('uses the configured Terraform executable path', async () => {
+    const previousBinary = process.env.TERRAFORM_BINARY;
+    process.env.TERRAFORM_BINARY = '/opt/homebrew/bin/terraform';
+
+    try {
+      await runner.apply('svc-123', { service_name: 'test' }, {});
+      expect(vi.mocked(spawn).mock.calls[0]?.[0]).toBe('/opt/homebrew/bin/terraform');
+    } finally {
+      if (previousBinary === undefined) delete process.env.TERRAFORM_BINARY;
+      else process.env.TERRAFORM_BINARY = previousBinary;
+    }
   });
 
   it('runs destroy command successfully', async () => {

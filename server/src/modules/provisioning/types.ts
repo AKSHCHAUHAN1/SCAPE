@@ -123,6 +123,7 @@ export interface TerraformJsonLine {
 export interface StateBackendConfig {
   bucket: string;
   key: string;
+  workspaceKeyPrefix: string;
   region: string;
   dynamodbTable: string;
   encrypt: boolean;

@@ -1,6 +1,6 @@
 # Terraform infrastructure
 
-SCAPE provisions one isolated Terraform root module per service. The generated root is stored at `environments/<service-id>/`; its remote state is stored under `services/<service-id>/terraform.tfstate` in an encrypted S3 bucket and locked with DynamoDB.
+SCAPE provisions one isolated Terraform root module per service. The generated root is stored at `environments/<service-id>/`; its remote state is stored in an encrypted S3 bucket below the `services/` prefix and locked with DynamoDB. The named workspace and service key are both included in the object path.
 
 ## Layout
 

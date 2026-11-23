@@ -62,6 +62,13 @@ describe('Log Sanitizer', () => {
       expect(result).toContain('[REDACTED_GITHUB_TOKEN]');
     });
 
+    it('should redact AWS encoded authorization diagnostics', () => {
+      const encoded = 'AbCd0123456789_-+/='.repeat(12);
+      const result = sanitize(`Encoded authorization failure message: ${encoded}`);
+      expect(result).toContain('[REDACTED_AWS_AUTHORIZATION_DETAILS]');
+      expect(result).not.toContain(encoded);
+    });
+
     it('should not modify clean strings', () => {
       const input = 'Terraform apply completed. Created 5 resources.';
       expect(sanitize(input)).toBe(input);

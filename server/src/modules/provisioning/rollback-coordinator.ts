@@ -93,6 +93,9 @@ export async function executeRollback(ctx: RollbackContext): Promise<TerraformRu
     const rollbackResult = await runner.destroy(workspace, awsEnv, {
       timeoutMs: DESTROY_TIMEOUT_MS,
     });
+    const safeRollbackError = rollbackResult.error
+      ? sanitizeTerraformLogs(rollbackResult.error, 12_000)
+      : 'Terraform destroy failed';
 
     const sanitizedLogs = rollbackResult.logs
       ? sanitizeTerraformLogs(rollbackResult.logs)
@@ -119,7 +122,8 @@ export async function executeRollback(ctx: RollbackContext): Promise<TerraformRu
     }
 
     // ── Rollback failed — needs manual intervention ──
-    const combinedError = `Apply error: ${applyError} | Rollback error: ${rollbackResult.error}`;
+    const safeApplyError = sanitizeTerraformLogs(applyError, 12_000);
+    const combinedError = `Apply error: ${safeApplyError} | Rollback error: ${safeRollbackError}`;
 
     await updateJobStatus(jobId, 'manual_intervention_required', {
       errorMessage: combinedError,
@@ -133,8 +137,8 @@ export async function executeRollback(ctx: RollbackContext): Promise<TerraformRu
       resourceType: 'provisioning_job',
       resourceId: jobId,
       payload: {
-        applyError,
-        rollbackError: rollbackResult.error,
+        applyError: safeApplyError,
+        rollbackError: safeRollbackError,
       },
     });
 
