@@ -4,7 +4,7 @@ variable "aws_account_id" {
 }
 
 variable "backend_role_arn" {
-  description = "Exact IAM role ARN used by the SCAPE backend runtime"
+  description = "IAM user or role ARN used by the local SCAPE backend runtime"
   type        = string
 }
 

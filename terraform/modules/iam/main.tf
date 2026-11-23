@@ -7,15 +7,30 @@ resource "aws_iam_role" "provisioning" {
   max_session_duration = 3600
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Action    = ["sts:AssumeRole", "sts:TagSession"]
-      Effect    = "Allow"
-      Principal = { AWS = var.backend_role_arn }
-      Condition = {
-        StringLike                  = { "sts:ExternalId" = "scape-service-*" }
-        "ForAllValues:StringEquals" = { "sts:TagKeys" = ["forge:service-id", "forge:team-id"] }
+    Statement = [
+      {
+        Sid       = "AllowBackendAssumeWithExternalId"
+        Action    = "sts:AssumeRole"
+        Effect    = "Allow"
+        Principal = { AWS = var.backend_role_arn }
+        Condition = {
+          StringLike = { "sts:ExternalId" = "scape-service-*" }
+        }
+      },
+      {
+        Sid       = "AllowBackendServiceSessionTags"
+        Action    = "sts:TagSession"
+        Effect    = "Allow"
+        Principal = { AWS = var.backend_role_arn }
+        Condition = {
+          "ForAllValues:StringEquals" = { "aws:TagKeys" = ["forge:service-id", "forge:team-id"] }
+          Null = {
+            "aws:RequestTag/forge:service-id" = "false"
+            "aws:RequestTag/forge:team-id"    = "false"
+          }
+        }
       }
-    }]
+    ]
   })
   tags = {
     ManagedBy = "scape"

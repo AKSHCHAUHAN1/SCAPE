@@ -46,11 +46,17 @@ terraform/**/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/*.tfvars
+terraform/**/terraform.tfstate
+terraform/**/terraform.tfstate.*
+terraform/**/*.tfvars
+terraform/**/backend.tf
 !terraform/*.tfvars.example
 terraform/environments/*/
 !terraform/environments/.gitkeep
 terraform/.terraform.lock.hcl
+terraform/**/.terraform.lock.hcl
 *.tfplan
+terraform/**/*.tfplan
 crash.log
 
 # ========================

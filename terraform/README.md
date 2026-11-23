@@ -17,7 +17,7 @@ terraform/
 
 ## Account setup
 
-Use an AWS deployment identity with permission to create the bootstrap resources. The SCAPE backend runtime must already have an IAM role; pass its exact ARN to the foundation stack.
+Use a non-root AWS deployment identity with permission to create the bootstrap resources. For a local demo, the backend runtime can be a dedicated IAM user; a deployed backend can use an IAM role. Pass that user's or role's exact ARN to the foundation stack.
 
 1. Create the state bucket and lock table. The bootstrap stack starts with local Terraform state and protects both resources from accidental destruction.
 
@@ -27,7 +27,7 @@ Use an AWS deployment identity with permission to create the bootstrap resources
    terraform apply -var='state_bucket_name=your-globally-unique-scape-state-bucket'
    ```
 
-2. Create platform roles and register GitHub Actions OIDC once per AWS account. The backend runtime role must be allowed to call `sts:AssumeRole` and `sts:TagSession` on the provisioning role, and `sts:AssumeRole` on the cost role.
+2. Create platform roles and register GitHub Actions OIDC once per AWS account. The foundation trusts the backend runtime principal supplied as `backend_role_arn`.
 
    ```sh
    cd ../foundation
@@ -39,11 +39,13 @@ Use an AWS deployment identity with permission to create the bootstrap resources
      -backend-config='dynamodb_table=scape-tf-locks' \
      -backend-config='encrypt=true'
    terraform apply \
-     -var='backend_role_arn=arn:aws:iam::123456789012:role/ScapeBackendRole' \
+     -var='backend_role_arn=arn:aws:iam::123456789012:user/scape-setup' \
      -var='state_bucket_name=your-globally-unique-scape-state-bucket'
    ```
 
-3. Set the returned provisioning and cost role ARNs as `AWS_PROVISIONING_ROLE_ARN` and `AWS_COST_EXPLORER_ROLE_ARN`. Set `TF_STATE_BUCKET` and `TF_LOCK_TABLE` to the same names. The backend role needs an identity policy allowing the two STS assume-role calls described above.
+3. Give the backend runtime principal an identity policy allowing `sts:AssumeRole` and `sts:TagSession` on `ForgeProvisioningRole`, and `sts:AssumeRole` on `CostExplorerReadRole`. For a local IAM user, store its credentials in a named AWS CLI profile and set `AWS_PROFILE` and `AWS_SDK_LOAD_CONFIG=1` in `server/.env`; never put access keys in `.env`.
+
+4. Set the returned provisioning and cost role ARNs as `AWS_PROVISIONING_ROLE_ARN` and `AWS_COST_EXPLORER_ROLE_ARN`. Set `TF_STATE_BUCKET` and `TF_LOCK_TABLE` to the same names. The local server uses these role ARNs and the backend profile to assume short-lived role sessions.
 
 The GitHub App installation must have repository administration, contents write, Actions write, and webhook write permissions for the service repositories. The foundation stack creates the account OIDC provider; each service module creates a separate deploy role that trusts only that service repository's `main` branch.
 
