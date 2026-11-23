@@ -74,9 +74,11 @@ resource "aws_iam_role_policy" "provisioning" {
           "autoscaling:DescribeAutoScalingGroups", "autoscaling:DescribeLaunchConfigurations",
           "autoscaling:DescribeTags", "ec2:DescribeLaunchTemplateVersions",
           "elasticloadbalancing:DescribeListeners", "elasticloadbalancing:DescribeLoadBalancers",
-          "elasticloadbalancing:DescribeTargetGroups", "ecs:DescribeClusters", "ecs:DescribeServices",
+          "elasticloadbalancing:DescribeTargetGroups", "elasticloadbalancing:DescribeTags",
+          "ecs:DescribeClusters", "ecs:DescribeServices",
           "ecs:DescribeTaskDefinition", "ecs:ListTagsForResource", "ecr:DescribeRepositories",
-          "logs:DescribeLogGroups", "logs:ListTagsForResource", "rds:DescribeDBInstances",
+          "ecr:ListTagsForResource", "logs:DescribeLogGroups", "logs:ListTagsForResource",
+          "rds:DescribeDBInstances", "rds:ListTagsForResource",
           "rds:DescribeDBSubnetGroups", "iam:GetRole", "iam:GetRolePolicy", "iam:GetOpenIDConnectProvider",
           "iam:ListAttachedRolePolicies", "iam:ListRolePolicies", "secretsmanager:DescribeSecret"
         ]
