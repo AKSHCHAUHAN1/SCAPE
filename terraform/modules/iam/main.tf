@@ -64,32 +64,12 @@ resource "aws_iam_role_policy" "provisioning" {
         Resource = var.state_lock_table_arn
       },
       {
-        Sid      = "DescribeDefaultRdsKmsKey"
-        Effect   = "Allow"
-        Action   = ["kms:DescribeKey"]
-        Resource = "arn:aws:kms:*:${var.aws_account_id}:key/*"
-        Condition = {
-          "ForAnyValue:StringEquals" = { "kms:ResourceAliases" = "alias/aws/rds" }
-        }
-      },
-      {
         Sid      = "DescribeDefaultSecretsManagerKmsKey"
         Effect   = "Allow"
         Action   = ["kms:DescribeKey"]
         Resource = "arn:aws:kms:*:${var.aws_account_id}:key/*"
         Condition = {
           "ForAnyValue:StringEquals" = { "kms:ResourceAliases" = "alias/aws/secretsmanager" }
-        }
-      },
-      {
-        Sid      = "CreateRdsEncryptionGrant"
-        Effect   = "Allow"
-        Action   = ["kms:CreateGrant"]
-        Resource = "arn:aws:kms:*:${var.aws_account_id}:key/*"
-        Condition = {
-          "ForAnyValue:StringEquals" = { "kms:ResourceAliases" = "alias/aws/rds" }
-          StringLike                 = { "kms:ViaService" = "rds.*.amazonaws.com" }
-          Bool                       = { "kms:GrantIsForAWSResource" = "true" }
         }
       },
       {
@@ -152,12 +132,38 @@ resource "aws_iam_role_policy" "provisioning" {
         }
       },
       {
-        Sid      = "ConfigureTaggedServiceSubnets"
-        Effect   = "Allow"
-        Action   = ["ec2:ModifySubnetAttribute"]
-        Resource = "arn:aws:ec2:*:${var.aws_account_id}:subnet/*"
+        Sid    = "LaunchTaggedServiceCompute"
+        Effect = "Allow"
+        Action = ["ec2:RunInstances"]
+        Resource = [
+          "arn:aws:ec2:*:${var.aws_account_id}:instance/*",
+          "arn:aws:ec2:*:${var.aws_account_id}:volume/*",
+          "arn:aws:ec2:*:${var.aws_account_id}:network-interface/*"
+        ]
+        Condition = {
+          StringEquals = { "aws:RequestTag/forge:service-id" = "$${aws:PrincipalTag/forge:service-id}" }
+        }
+      },
+      {
+        Sid    = "UseTaggedServiceResourcesForCompute"
+        Effect = "Allow"
+        Action = ["ec2:RunInstances"]
+        Resource = [
+          "arn:aws:ec2:*:${var.aws_account_id}:launch-template/*",
+          "arn:aws:ec2:*:${var.aws_account_id}:subnet/*",
+          "arn:aws:ec2:*:${var.aws_account_id}:security-group/*"
+        ]
         Condition = {
           StringEquals = { "aws:ResourceTag/forge:service-id" = "$${aws:PrincipalTag/forge:service-id}" }
+        }
+      },
+      {
+        Sid      = "UseAmazonLinuxImagesForCompute"
+        Effect   = "Allow"
+        Action   = ["ec2:RunInstances"]
+        Resource = "arn:aws:ec2:*::image/*"
+        Condition = {
+          StringEquals = { "ec2:Owner" = "amazon" }
         }
       },
       {
@@ -193,7 +199,7 @@ resource "aws_iam_role_policy" "provisioning" {
         Sid    = "ConfigureTaggedServiceResources"
         Effect = "Allow"
         Action = [
-          "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress", "ec2:ModifySubnetAttribute",
           "elasticloadbalancing:ModifyTargetGroupAttributes",
           "logs:PutRetentionPolicy", "s3:PutBucketPublicAccessBlock",
           "s3:PutBucketOwnershipControls", "s3:PutEncryptionConfiguration",
@@ -217,7 +223,7 @@ resource "aws_iam_role_policy" "provisioning" {
           "autoscaling:DeleteAutoScalingGroup", "autoscaling:DeleteTags", "autoscaling:UpdateAutoScalingGroup", "elasticloadbalancing:DeleteLoadBalancer",
           "elasticloadbalancing:DeleteTargetGroup", "elasticloadbalancing:DeleteListener",
           "elasticloadbalancing:RemoveTags", "ecs:DeleteCluster", "ecs:UpdateService", "ecs:DeleteService",
-          "ecs:DeregisterTaskDefinition", "ecs:UntagResource", "ecr:DeleteRepository", "ecr:UntagResource",
+          "ecs:UntagResource", "ecr:DeleteRepository", "ecr:UntagResource",
           "ecr:ListImages", "ecr:BatchDeleteImage", "s3:DeleteBucketTagging",
           "cloudfront:DeleteDistribution", "cloudfront:UntagResource",
           "logs:DeleteLogGroup", "logs:UntagResource", "rds:DeleteDBInstance", "rds:DeleteDBSubnetGroup",
@@ -287,18 +293,23 @@ resource "aws_iam_role_policy" "provisioning" {
         Condition = { StringEquals = { "iam:PassedToService" = ["ecs-tasks.amazonaws.com", "ec2.amazonaws.com"] } }
       },
       {
-        Sid       = "CreateRdsServiceLinkedRole"
-        Effect    = "Allow"
-        Action    = ["iam:CreateServiceLinkedRole"]
-        Resource  = "arn:aws:iam::*:role/aws-service-role/rds.amazonaws.com/AWSServiceRoleForRDS"
-        Condition = { StringEquals = { "iam:AWSServiceName" = "rds.amazonaws.com" } }
+        Sid    = "CreateServiceLinkedRoles"
+        Effect = "Allow"
+        Action = ["iam:CreateServiceLinkedRole"]
+        Resource = [
+          "arn:aws:iam::*:role/aws-service-role/rds.amazonaws.com/AWSServiceRoleForRDS",
+          "arn:aws:iam::*:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling",
+          "arn:aws:iam::*:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing"
+        ]
+        Condition = {
+          StringEquals = { "iam:AWSServiceName" = ["rds.amazonaws.com", "autoscaling.amazonaws.com", "elasticloadbalancing.amazonaws.com"] }
+        }
       },
       {
-        Sid       = "CreateAutoScalingServiceLinkedRole"
-        Effect    = "Allow"
-        Action    = ["iam:CreateServiceLinkedRole"]
-        Resource  = "arn:aws:iam::*:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"
-        Condition = { StringEquals = { "iam:AWSServiceName" = "autoscaling.amazonaws.com" } }
+        Sid      = "DeregisterServiceTaskDefinitions"
+        Effect   = "Allow"
+        Action   = ["ecs:DeregisterTaskDefinition"]
+        Resource = "arn:aws:ecs:*:${var.aws_account_id}:task-definition/*-????????-task:*"
       }
     ]
   })
