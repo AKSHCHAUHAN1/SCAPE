@@ -302,10 +302,11 @@ resource "aws_iam_role_policy" "provisioning" {
         Resource = [
           "arn:aws:iam::*:role/aws-service-role/rds.amazonaws.com/AWSServiceRoleForRDS",
           "arn:aws:iam::*:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling",
-          "arn:aws:iam::*:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing"
+          "arn:aws:iam::*:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing",
+          "arn:aws:iam::*:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS"
         ]
         Condition = {
-          StringEquals = { "iam:AWSServiceName" = ["rds.amazonaws.com", "autoscaling.amazonaws.com", "elasticloadbalancing.amazonaws.com"] }
+          StringEquals = { "iam:AWSServiceName" = ["rds.amazonaws.com", "autoscaling.amazonaws.com", "elasticloadbalancing.amazonaws.com", "ecs.amazonaws.com"] }
         }
       },
       {
