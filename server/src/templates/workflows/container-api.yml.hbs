@@ -43,9 +43,5 @@ jobs:
 
       - name: Deploy to ECS
         run: |
-          aws ecs update-service \\
-            --cluster "$ECS_CLUSTER" \\
-            --service "$ECS_SERVICE" \\
-            --desired-count 1 \\
-            --force-new-deployment
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE" --desired-count 1 --force-new-deployment
           aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
