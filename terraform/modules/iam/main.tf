@@ -84,10 +84,11 @@ resource "aws_iam_role_policy" "provisioning" {
         Action = [
           "ec2:DescribeAvailabilityZones", "ec2:DescribeInternetGateways", "ec2:DescribeRouteTables",
           "ec2:DescribeSecurityGroups", "ec2:DescribeSubnets", "ec2:DescribeNetworkInterfaces",
-          "ec2:DescribeTags", "ec2:DescribeVpcs",
+          "ec2:DescribeTags", "ec2:DescribeVpcs", "ec2:DescribeAccountAttributes",
           "ec2:DescribeVpcAttribute",
           "ec2:DescribeImages", "ec2:DescribeLaunchTemplates", "ssm:GetParameter",
           "autoscaling:DescribeAutoScalingGroups", "autoscaling:DescribeLaunchConfigurations",
+          "autoscaling:DescribeScalingActivities",
           "autoscaling:DescribeTags", "ec2:DescribeLaunchTemplateVersions",
           "elasticloadbalancing:DescribeListeners", "elasticloadbalancing:DescribeLoadBalancers",
           "elasticloadbalancing:DescribeTargetGroups", "elasticloadbalancing:DescribeTargetGroupAttributes",
