@@ -92,6 +92,7 @@ resource "aws_iam_role_policy" "provisioning" {
           "autoscaling:DescribeTags", "ec2:DescribeLaunchTemplateVersions",
           "elasticloadbalancing:DescribeListeners", "elasticloadbalancing:DescribeLoadBalancers",
           "elasticloadbalancing:DescribeTargetGroups", "elasticloadbalancing:DescribeTargetGroupAttributes",
+          "elasticloadbalancing:DescribeLoadBalancerAttributes",
           "elasticloadbalancing:DescribeTags",
           "ecs:DescribeClusters", "ecs:DescribeServices",
           "ecs:DescribeTaskDefinition", "ecs:ListTagsForResource", "ecr:DescribeRepositories",
@@ -201,7 +202,7 @@ resource "aws_iam_role_policy" "provisioning" {
         Effect = "Allow"
         Action = [
           "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress", "ec2:ModifySubnetAttribute",
-          "elasticloadbalancing:ModifyTargetGroupAttributes",
+          "elasticloadbalancing:ModifyTargetGroupAttributes", "elasticloadbalancing:ModifyLoadBalancerAttributes",
           "logs:PutRetentionPolicy", "s3:PutBucketPublicAccessBlock",
           "s3:PutBucketOwnershipControls", "s3:PutEncryptionConfiguration",
           "s3:PutBucketVersioning", "s3:PutBucketPolicy", "s3:GetBucketPolicy",
