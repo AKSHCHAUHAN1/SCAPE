@@ -73,6 +73,15 @@ resource "aws_iam_role_policy" "provisioning" {
         }
       },
       {
+        Sid      = "DescribeDefaultSecretsManagerKmsKey"
+        Effect   = "Allow"
+        Action   = ["kms:DescribeKey"]
+        Resource = "arn:aws:kms:*:${var.aws_account_id}:key/*"
+        Condition = {
+          "ForAnyValue:StringEquals" = { "kms:ResourceAliases" = "alias/aws/secretsmanager" }
+        }
+      },
+      {
         Sid      = "CreateRdsEncryptionGrant"
         Effect   = "Allow"
         Action   = ["kms:CreateGrant"]
@@ -82,6 +91,12 @@ resource "aws_iam_role_policy" "provisioning" {
           StringLike                 = { "kms:ViaService" = "rds.*.amazonaws.com" }
           Bool                       = { "kms:GrantIsForAWSResource" = "true" }
         }
+      },
+      {
+        Sid      = "ManageRdsPasswordSecrets"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:CreateSecret", "secretsmanager:TagResource"]
+        Resource = "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:rds!*"
       },
       {
         Sid    = "DescribeProvisioningResources"
@@ -132,6 +147,15 @@ resource "aws_iam_role_policy" "provisioning" {
         Effect   = "Allow"
         Action   = ["ec2:CreateSubnet", "ec2:CreateRouteTable", "ec2:CreateSecurityGroup"]
         Resource = "arn:aws:ec2:*:${var.aws_account_id}:vpc/*"
+        Condition = {
+          StringEquals = { "aws:ResourceTag/forge:service-id" = "$${aws:PrincipalTag/forge:service-id}" }
+        }
+      },
+      {
+        Sid      = "ConfigureTaggedServiceSubnets"
+        Effect   = "Allow"
+        Action   = ["ec2:ModifySubnetAttribute"]
+        Resource = "arn:aws:ec2:*:${var.aws_account_id}:subnet/*"
         Condition = {
           StringEquals = { "aws:ResourceTag/forge:service-id" = "$${aws:PrincipalTag/forge:service-id}" }
         }
