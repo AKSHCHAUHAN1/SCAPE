@@ -81,7 +81,8 @@ resource "aws_iam_role_policy" "provisioning" {
           "ecr:ListTagsForResource", "logs:DescribeLogGroups", "logs:ListTagsForResource",
           "rds:DescribeDBInstances", "rds:ListTagsForResource",
           "rds:DescribeDBSubnetGroups", "iam:GetRole", "iam:GetRolePolicy", "iam:GetOpenIDConnectProvider",
-          "iam:ListAttachedRolePolicies", "iam:ListRolePolicies", "secretsmanager:DescribeSecret"
+          "iam:ListAttachedRolePolicies", "iam:ListRolePolicies", "iam:ListInstanceProfilesForRole",
+          "secretsmanager:DescribeSecret"
         ]
         Resource = "*"
       },
@@ -103,6 +104,15 @@ resource "aws_iam_role_policy" "provisioning" {
         Resource = "*"
         Condition = {
           StringEquals = { "aws:RequestTag/forge:service-id" = "$${aws:PrincipalTag/forge:service-id}" }
+        }
+      },
+      {
+        Sid      = "CreateRelatedNetworkResourcesInTaggedVpc"
+        Effect   = "Allow"
+        Action   = ["ec2:CreateSubnet", "ec2:CreateRouteTable", "ec2:CreateSecurityGroup"]
+        Resource = "arn:aws:ec2:*:${var.aws_account_id}:vpc/*"
+        Condition = {
+          StringEquals = { "aws:ResourceTag/forge:service-id" = "$${aws:PrincipalTag/forge:service-id}" }
         }
       },
       {
@@ -139,6 +149,7 @@ resource "aws_iam_role_policy" "provisioning" {
         Effect = "Allow"
         Action = [
           "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
+          "elasticloadbalancing:ModifyTargetGroupAttributes",
           "logs:PutRetentionPolicy", "s3:PutBucketPublicAccessBlock",
           "s3:PutBucketOwnershipControls", "s3:PutEncryptionConfiguration",
           "s3:PutBucketVersioning", "s3:PutBucketPolicy", "s3:GetBucketPolicy",
