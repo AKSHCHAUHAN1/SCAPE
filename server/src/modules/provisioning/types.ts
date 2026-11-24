@@ -145,6 +145,8 @@ export interface EnvironmentConfig {
   requestedMemoryGiB?: number;
   ownerTeam: string;
   githubRepository: string;
+  githubOwnerId: number;
+  githubRepositoryId: number;
   tags: Record<string, string>;
   stateBackend: StateBackendConfig;
 }

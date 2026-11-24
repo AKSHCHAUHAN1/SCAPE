@@ -80,6 +80,8 @@ module "service" {
   service_name = var.service_name
   service_id   = var.service_id
   github_repository = var.github_repository
+  github_owner_id = var.github_owner_id
+  github_repository_id = var.github_repository_id
   region       = var.region
   environment  = var.environment
   owner_team   = var.owner_team
@@ -98,6 +100,14 @@ variable "service_id" {
 
 variable "github_repository" {
   type = string
+}
+
+variable "github_owner_id" {
+  type = number
+}
+
+variable "github_repository_id" {
+  type = number
 }
 
 variable "region" {
@@ -186,6 +196,8 @@ function generateTfVarsJson(cfg: EnvironmentConfig): string {
     service_name: cfg.serviceName,
     service_id: cfg.serviceId,
     github_repository: cfg.githubRepository,
+    github_owner_id: cfg.githubOwnerId,
+    github_repository_id: cfg.githubRepositoryId,
     region: cfg.region,
     environment: cfg.environment,
     owner_team: cfg.ownerTeam,

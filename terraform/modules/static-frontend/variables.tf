@@ -30,6 +30,18 @@ variable "github_repository" {
   type        = string
 }
 
+variable "github_owner_id" {
+  description = "Immutable numeric GitHub owner ID used in the deployment role OIDC subject"
+  type        = number
+  default     = null
+}
+
+variable "github_repository_id" {
+  description = "Immutable numeric GitHub repository ID used in the deployment role OIDC subject"
+  type        = number
+  default     = null
+}
+
 variable "tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)

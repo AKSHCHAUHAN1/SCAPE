@@ -89,7 +89,7 @@ export class GitHubIntegrator {
     serviceId: string;
     serviceName: string;
     templateType: ServiceTemplateType;
-  }): Promise<{ htmlUrl: string; fullName: string }> {
+  }): Promise<{ htmlUrl: string; fullName: string; ownerId: number; repositoryId: number }> {
     const templateRepos: Record<ServiceTemplateType, string> = {
       'static-frontend': config.github.staticFrontendTemplateRepo,
       'nodejs-api': config.github.nodejsApiTemplateRepo,
@@ -122,7 +122,12 @@ export class GitHubIntegrator {
         }),
         'createRepositoryFromTemplate',
       );
-      return { htmlUrl: data.html_url, fullName: data.full_name };
+      return {
+        htmlUrl: data.html_url,
+        fullName: data.full_name,
+        ownerId: data.owner.id,
+        repositoryId: data.id,
+      };
     } catch (err) {
       const status = (err as { status?: number; response?: { status?: number } }).status
         ?? (err as { response?: { status?: number } }).response?.status;
@@ -164,7 +169,12 @@ export class GitHubIntegrator {
       if (!data.description?.includes(marker)) {
         throw new Error(`GitHub repository ${owner}/${repositoryName} already exists and is not owned by this service.`);
       }
-      return { htmlUrl: data.html_url, fullName: data.full_name };
+      return {
+        htmlUrl: data.html_url,
+        fullName: data.full_name,
+        ownerId: data.owner.id,
+        repositoryId: data.id,
+      };
     }
   }
 

@@ -264,7 +264,7 @@ resource "aws_iam_role_policy" "provisioning" {
       {
         Sid      = "ManageServiceIamPolicyAttachments"
         Effect   = "Allow"
-        Action   = ["iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies", "iam:PutRolePolicy"]
+        Action   = ["iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy"]
         Resource = "arn:aws:iam::${var.aws_account_id}:role/scape/services/*"
         Condition = {
           StringEquals = { "aws:ResourceTag/forge:service-id" = "$${aws:PrincipalTag/forge:service-id}" }

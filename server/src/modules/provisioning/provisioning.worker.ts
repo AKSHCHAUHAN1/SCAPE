@@ -54,8 +54,10 @@ async function updateJobStatus(
 
   if (status === 'running') {
     fields.push('started_at = NOW()');
+    fields.push('error_message = NULL');
   } else if (['succeeded', 'failed', 'rolled_back', 'manual_intervention_required'].includes(status)) {
     fields.push('completed_at = NOW()');
+    if (status === 'succeeded') fields.push('error_message = NULL');
   }
 
   if (extra?.errorMessage !== undefined) {
@@ -248,6 +250,8 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
         requestedMemoryGiB,
         ownerTeam: teamId,
         githubRepository: sourceRepository.fullName,
+        githubOwnerId: sourceRepository.ownerId,
+        githubRepositoryId: sourceRepository.repositoryId,
         tags: {
           'forge:service-id': serviceId,
           'forge:team-id': teamId,

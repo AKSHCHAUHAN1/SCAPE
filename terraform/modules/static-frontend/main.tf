@@ -5,6 +5,13 @@ data "aws_caller_identity" "current" {}
 
 locals {
   service_slug = "${substr(replace(lower(var.service_name), "/[^a-z0-9-]/", "-"), 0, 14)}-${substr(replace(var.service_id, "-", ""), 0, 8)}"
+  github_oidc_subject = var.github_owner_id == null || var.github_repository_id == null ? "repo:${var.github_repository}:ref:refs/heads/main" : format(
+    "repo:%s@%s/%s@%s:ref:refs/heads/main",
+    split("/", var.github_repository)[0],
+    var.github_owner_id,
+    split("/", var.github_repository)[1],
+    var.github_repository_id
+  )
   tags = merge(var.tags, {
     "forge:service-id"  = var.service_id
     "forge:team-id"     = var.owner_team
@@ -127,7 +134,7 @@ resource "aws_iam_role" "github_deploy" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub" = local.github_oidc_subject
         }
       }
     }]
