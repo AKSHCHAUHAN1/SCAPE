@@ -64,11 +64,32 @@ resource "aws_iam_role_policy" "provisioning" {
         Resource = var.state_lock_table_arn
       },
       {
+        Sid      = "DescribeDefaultRdsKmsKey"
+        Effect   = "Allow"
+        Action   = ["kms:DescribeKey"]
+        Resource = "arn:aws:kms:*:${var.aws_account_id}:key/*"
+        Condition = {
+          "ForAnyValue:StringEquals" = { "kms:ResourceAliases" = "alias/aws/rds" }
+        }
+      },
+      {
+        Sid      = "CreateRdsEncryptionGrant"
+        Effect   = "Allow"
+        Action   = ["kms:CreateGrant"]
+        Resource = "arn:aws:kms:*:${var.aws_account_id}:key/*"
+        Condition = {
+          "ForAnyValue:StringEquals" = { "kms:ResourceAliases" = "alias/aws/rds" }
+          StringLike                 = { "kms:ViaService" = "rds.*.amazonaws.com" }
+          Bool                       = { "kms:GrantIsForAWSResource" = "true" }
+        }
+      },
+      {
         Sid    = "DescribeProvisioningResources"
         Effect = "Allow"
         Action = [
           "ec2:DescribeAvailabilityZones", "ec2:DescribeInternetGateways", "ec2:DescribeRouteTables",
-          "ec2:DescribeSecurityGroups", "ec2:DescribeSubnets", "ec2:DescribeTags", "ec2:DescribeVpcs",
+          "ec2:DescribeSecurityGroups", "ec2:DescribeSubnets", "ec2:DescribeNetworkInterfaces",
+          "ec2:DescribeTags", "ec2:DescribeVpcs",
           "ec2:DescribeVpcAttribute",
           "ec2:DescribeImages", "ec2:DescribeLaunchTemplates", "ssm:GetParameter",
           "autoscaling:DescribeAutoScalingGroups", "autoscaling:DescribeLaunchConfigurations",

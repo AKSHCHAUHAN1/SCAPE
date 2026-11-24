@@ -7,6 +7,10 @@ data "aws_availability_zones" "available" {
 
 data "aws_caller_identity" "current" {}
 
+data "aws_kms_key" "rds_default" {
+  key_id = "alias/aws/rds"
+}
+
 data "aws_ssm_parameter" "ecs_ami" {
   count = var.compute_mode == "ec2" ? 1 : 0
   name  = "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
@@ -375,6 +379,7 @@ resource "aws_db_instance" "postgres" {
   db_name                     = "app"
   username                    = "scape_admin"
   manage_master_user_password = true
+  kms_key_id                  = data.aws_kms_key.rds_default.arn
   backup_retention_period     = 7
   auto_minor_version_upgrade  = true
   publicly_accessible         = false
