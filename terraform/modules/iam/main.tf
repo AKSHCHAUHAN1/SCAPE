@@ -93,6 +93,7 @@ resource "aws_iam_role_policy" "provisioning" {
           "elasticloadbalancing:DescribeListeners", "elasticloadbalancing:DescribeLoadBalancers",
           "elasticloadbalancing:DescribeTargetGroups", "elasticloadbalancing:DescribeTargetGroupAttributes",
           "elasticloadbalancing:DescribeLoadBalancerAttributes",
+          "elasticloadbalancing:DescribeListenerAttributes",
           "elasticloadbalancing:DescribeTags",
           "ecs:DescribeClusters", "ecs:DescribeServices",
           "ecs:DescribeTaskDefinition", "ecs:ListTagsForResource", "ecr:DescribeRepositories",
