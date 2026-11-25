@@ -9,12 +9,12 @@
  */
 
 import { query } from '../../database/index.js';
+import { config } from '../../config/index.js';
 import { logger } from '../../utils/logger.js';
 import { logAction } from '../audit/audit.service.js';
 import { TerraformRunner } from './terraform-runner.js';
 import { sanitizeTerraformLogs } from './log-sanitizer.js';
 import type { TerraformRunResult } from './types.js';
-import { DESTROY_TIMEOUT_MS } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Job Status Helpers
@@ -91,7 +91,7 @@ export async function executeRollback(ctx: RollbackContext): Promise<TerraformRu
 
   try {
     const rollbackResult = await runner.destroy(workspace, awsEnv, {
-      timeoutMs: DESTROY_TIMEOUT_MS,
+      timeoutMs: config.terraform.destroyTimeoutMs,
     });
     const safeRollbackError = rollbackResult.error
       ? sanitizeTerraformLogs(rollbackResult.error, 12_000)

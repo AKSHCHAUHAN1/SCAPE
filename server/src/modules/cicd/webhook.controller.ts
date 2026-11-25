@@ -192,13 +192,16 @@ async function handleWorkflowRunEvent(
     [runId],
   );
 
+  let deploymentId: string;
+
   if (existing.rowCount && existing.rowCount > 0) {
+    deploymentId = String(existing.rows[0].id);
     // Update existing record
     await query(
       `UPDATE deployments
-       SET status = $1,
+       SET status = $1::deployment_status,
            commit_sha = COALESCE($3, commit_sha),
-           completed_at = CASE WHEN $1 IN ('succeeded', 'failed') THEN NOW() ELSE completed_at END
+           completed_at = CASE WHEN $1::deployment_status IN ('succeeded'::deployment_status, 'failed'::deployment_status) THEN NOW() ELSE completed_at END
        WHERE github_run_id = $2`,
       [deploymentStatus, runId, commitSha],
     );
@@ -210,21 +213,24 @@ async function handleWorkflowRunEvent(
       [service.id, branch],
     );
     if (pending.rowCount) {
+      deploymentId = String(pending.rows[0].id);
       await query(
         `UPDATE deployments
-         SET github_run_id = $1, status = $2, commit_sha = COALESCE($3, commit_sha),
-             started_at = CASE WHEN $2 = 'running' THEN NOW() ELSE started_at END,
-             completed_at = CASE WHEN $2 IN ('succeeded', 'failed') THEN NOW() ELSE completed_at END
+         SET github_run_id = $1, status = $2::deployment_status, commit_sha = COALESCE($3, commit_sha),
+             started_at = CASE WHEN $2::deployment_status = 'running'::deployment_status THEN NOW() ELSE started_at END,
+             completed_at = CASE WHEN $2::deployment_status IN ('succeeded'::deployment_status, 'failed'::deployment_status) THEN NOW() ELSE completed_at END
          WHERE id = $4`,
         [runId, deploymentStatus, commitSha, pending.rows[0].id],
       );
     } else {
-      await query(
+      const inserted = await query(
         `INSERT INTO deployments
            (service_id, triggered_by, github_run_id, status, commit_sha, branch, started_at)
-         VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'running' THEN NOW() ELSE NULL END)`,
+         VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $4 = 'running' THEN NOW() ELSE NULL END)
+         RETURNING id`,
         [service.id, service.owner_id, runId, deploymentStatus, commitSha, branch],
       );
+      deploymentId = String(inserted.rows[0].id);
     }
   }
 
@@ -232,7 +238,7 @@ async function handleWorkflowRunEvent(
     actorId: service.owner_id,
     action: `deployment.${deploymentStatus}`,
     resourceType: 'deployment',
-    resourceId: runId,
+    resourceId: deploymentId,
     payload: {
       deliveryId,
       repository: repository.full_name,

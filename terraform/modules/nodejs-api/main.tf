@@ -13,7 +13,7 @@ data "aws_ssm_parameter" "ecs_ami" {
 }
 
 locals {
-  service_slug = "${substr(replace(lower(var.service_name), "/[^a-z0-9-]/", "-"), 0, 14)}-${substr(replace(var.service_id, "-", ""), 0, 8)}"
+  service_slug = "${trim(substr(replace(lower(var.service_name), "/[^a-z0-9-]/", "-"), 0, 14), "-")}-${substr(replace(var.service_id, "-", ""), 0, 8)}"
   github_oidc_subject = var.github_owner_id == null || var.github_repository_id == null ? "repo:${var.github_repository}:ref:refs/heads/main" : format(
     "repo:%s@%s/%s@%s:ref:refs/heads/main",
     split("/", var.github_repository)[0],
@@ -198,7 +198,7 @@ resource "aws_ecs_task_definition" "app" {
     essential = true
     portMappings = [{
       containerPort = 3000
-      hostPort      = var.compute_mode == "ec2" ? 3000 : 0
+      hostPort      = 3000
       protocol      = "tcp"
     }]
     environment = [

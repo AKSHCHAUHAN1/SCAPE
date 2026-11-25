@@ -79,7 +79,6 @@ resource "aws_iam_role_policy" "provisioning" {
         Resource = "arn:aws:secretsmanager:*:${var.aws_account_id}:secret:rds!*"
       },
       {
-        Sid    = "DescribeProvisioningResources"
         Effect = "Allow"
         Action = [
           "ec2:DescribeAvailabilityZones", "ec2:DescribeInternetGateways", "ec2:DescribeRouteTables",
@@ -181,7 +180,8 @@ resource "aws_iam_role_policy" "provisioning" {
         Sid    = "ManageServiceWebsiteBucket"
         Effect = "Allow"
         Action = [
-          "s3:DeleteBucket", "s3:DeleteBucketTagging", "s3:GetBucketPolicy", "s3:PutBucketPolicy",
+          "s3:DeleteBucket", "s3:DeleteBucketTagging", "s3:Get*",
+          "s3:PutBucketPolicy",
           "s3:DeleteBucketPolicy", "s3:PutBucketPublicAccessBlock", "s3:PutBucketOwnershipControls",
           "s3:PutEncryptionConfiguration", "s3:PutBucketVersioning", "s3:PutBucketTagging",
           "s3:ListBucket", "s3:ListBucketVersions"
@@ -195,10 +195,17 @@ resource "aws_iam_role_policy" "provisioning" {
         Resource = "arn:aws:s3:::scape-frontend-$${aws:PrincipalTag/forge:service-id}/*"
       },
       {
-        Sid      = "CreateServiceCloudFrontDistribution"
         Effect   = "Allow"
-        Action   = ["cloudfront:CreateDistribution"]
+        Action   = ["cloudfront:CreateDistribution", "cloudfront:CreateCloudFrontOriginAccessIdentity"]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudfront:GetCloudFrontOriginAccessIdentity", "cloudfront:GetCloudFrontOriginAccessIdentityConfig",
+          "cloudfront:UpdateCloudFrontOriginAccessIdentity", "cloudfront:DeleteCloudFrontOriginAccessIdentity"
+        ]
+        Resource = "arn:aws:cloudfront::${var.aws_account_id}:origin-access-identity/*"
       },
       {
         Sid    = "ConfigureTaggedServiceResources"
@@ -206,10 +213,7 @@ resource "aws_iam_role_policy" "provisioning" {
         Action = [
           "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress", "ec2:ModifySubnetAttribute",
           "elasticloadbalancing:ModifyTargetGroupAttributes", "elasticloadbalancing:ModifyLoadBalancerAttributes",
-          "logs:PutRetentionPolicy", "s3:PutBucketPublicAccessBlock",
-          "s3:PutBucketOwnershipControls", "s3:PutEncryptionConfiguration",
-          "s3:PutBucketVersioning", "s3:PutBucketPolicy", "s3:GetBucketPolicy",
-          "s3:DeleteBucketPolicy", "cloudfront:GetDistribution",
+          "logs:PutRetentionPolicy", "cloudfront:GetDistribution",
           "cloudfront:GetDistributionConfig", "cloudfront:UpdateDistribution",
           "cloudfront:ListTagsForResource"
         ]
@@ -229,7 +233,7 @@ resource "aws_iam_role_policy" "provisioning" {
           "elasticloadbalancing:DeleteTargetGroup", "elasticloadbalancing:DeleteListener",
           "elasticloadbalancing:RemoveTags", "ecs:DeleteCluster", "ecs:UpdateService", "ecs:DeleteService",
           "ecs:UntagResource", "ecr:DeleteRepository", "ecr:UntagResource",
-          "ecr:ListImages", "ecr:BatchDeleteImage", "s3:DeleteBucketTagging",
+          "ecr:ListImages", "ecr:BatchDeleteImage",
           "cloudfront:DeleteDistribution", "cloudfront:UntagResource",
           "logs:DeleteLogGroup", "logs:UntagResource", "rds:DeleteDBInstance", "rds:DeleteDBSubnetGroup",
           "rds:RemoveTagsFromResource"
@@ -312,10 +316,11 @@ resource "aws_iam_role_policy" "provisioning" {
         }
       },
       {
-        Sid      = "DeregisterServiceTaskDefinitions"
-        Effect   = "Allow"
-        Action   = ["ecs:DeregisterTaskDefinition"]
-        Resource = "arn:aws:ecs:*:${var.aws_account_id}:task-definition/*-????????-task:*"
+        Sid    = "DeregisterServiceTaskDefinitions"
+        Effect = "Allow"
+        Action = ["ecs:DeregisterTaskDefinition"]
+        # ECS does not support resource-level permissions for this action.
+        Resource = "*"
       }
     ]
   })

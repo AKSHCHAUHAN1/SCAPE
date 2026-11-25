@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import crypto from 'node:crypto';
+import { logAction } from '../../src/modules/audit/audit.service.js';
 
 // Mock DB
 const mockQuery = vi.fn();
@@ -140,5 +141,88 @@ describe('WebhookController', () => {
         serviceId: 'svc-001',
       }),
     );
+  });
+
+  it('updates a pending deployment with an enum-safe status and audits its UUID', async () => {
+    const deploymentId = '90000000-0000-4000-8000-000000000001';
+    const body = {
+      workflow_run: {
+        id: 998878,
+        head_sha: 'fedcba987654',
+        head_branch: 'main',
+        conclusion: 'success',
+        status: 'completed',
+        name: 'Deploy',
+      },
+      repository: {
+        name: 'test-app',
+        full_name: 'test-org/test-app',
+        html_url: 'https://github.com/test-org/test-app',
+      },
+    };
+    const payload = JSON.stringify(body);
+
+    req.headers['x-github-event'] = 'workflow_run';
+    req.headers['x-hub-signature-256'] = computeSignature(payload, 'test-secret-key-12345');
+    req.rawBody = Buffer.from(payload);
+    req.body = body;
+
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: '80000000-0000-4000-8000-000000000001', owner_id: '70000000-0000-4000-8000-000000000001' }] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: deploymentId }] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    await handleGitHubWebhook(req, res, next);
+
+    const updateSql = mockQuery.mock.calls[3][0] as string;
+    expect(updateSql).toContain('status = $2::deployment_status');
+    expect(updateSql).toContain("$2::deployment_status = 'running'::deployment_status");
+    expect(logAction).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'deployment.succeeded',
+      resourceId: deploymentId,
+    }));
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('updates an existing run with an enum-safe status and audits its UUID', async () => {
+    const deploymentId = '90000000-0000-4000-8000-000000000002';
+    const body = {
+      workflow_run: {
+        id: 998879,
+        head_sha: '0123456789ab',
+        head_branch: 'main',
+        conclusion: 'failure',
+        status: 'completed',
+        name: 'Deploy',
+      },
+      repository: {
+        name: 'test-app',
+        full_name: 'test-org/test-app',
+        html_url: 'https://github.com/test-org/test-app',
+      },
+    };
+    const payload = JSON.stringify(body);
+
+    req.headers['x-github-event'] = 'workflow_run';
+    req.headers['x-hub-signature-256'] = computeSignature(payload, 'test-secret-key-12345');
+    req.rawBody = Buffer.from(payload);
+    req.body = body;
+
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: '80000000-0000-4000-8000-000000000002', owner_id: '70000000-0000-4000-8000-000000000002' }] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: deploymentId }] });
+    mockQuery.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+
+    await handleGitHubWebhook(req, res, next);
+
+    const updateSql = mockQuery.mock.calls[2][0] as string;
+    expect(updateSql).toContain('status = $1::deployment_status');
+    expect(updateSql).toContain("$1::deployment_status IN ('succeeded'::deployment_status, 'failed'::deployment_status)");
+    expect(logAction).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'deployment.failed',
+      resourceId: deploymentId,
+    }));
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
   });
 });

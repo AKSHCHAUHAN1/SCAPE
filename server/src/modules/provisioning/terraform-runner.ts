@@ -21,10 +21,11 @@ import path from 'path';
 import fs from 'fs/promises';
 import os from 'os';
 import { logger } from '../../utils/logger.js';
+import { config } from '../../config/index.js';
 import { sanitizeTerraformLogs } from './log-sanitizer.js';
 import { getBackendConfigArgs } from './state-manager.js';
 import type { TerraformRunResult, TerraformJsonLine } from './types.js';
-import { APPLY_TIMEOUT_MS, DESTROY_TIMEOUT_MS, INIT_TIMEOUT_MS } from './types.js';
+import { APPLY_TIMEOUT_MS, INIT_TIMEOUT_MS } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Plugin cache directory (shared across runs for performance)
@@ -157,7 +158,7 @@ export class TerraformRunner {
         'destroy',
         ['-auto-approve', '-json', '-input=false'],
         env,
-        options?.timeoutMs ?? DESTROY_TIMEOUT_MS,
+        options?.timeoutMs ?? config.terraform.destroyTimeoutMs,
       );
       allLogs.push('=== TERRAFORM DESTROY ===\n' + destroyResult.combined);
 

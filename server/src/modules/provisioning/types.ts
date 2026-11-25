@@ -156,5 +156,4 @@ export interface EnvironmentConfig {
 // ---------------------------------------------------------------------------
 
 export const APPLY_TIMEOUT_MS = 10 * 60 * 1000;   // 10 minutes
-export const DESTROY_TIMEOUT_MS = 5 * 60 * 1000;   // 5 minutes
 export const INIT_TIMEOUT_MS = 2 * 60 * 1000;      // 2 minutes

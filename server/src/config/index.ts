@@ -56,7 +56,7 @@ export const config = {
     stateBucket: process.env.TF_STATE_BUCKET || 'scape-tf-state',
     lockTable: process.env.TF_LOCK_TABLE || 'scape-tf-locks',
     applyTimeoutMs: parseInt(process.env.TF_APPLY_TIMEOUT_MS || '600000', 10),   // 10 min
-    destroyTimeoutMs: parseInt(process.env.TF_DESTROY_TIMEOUT_MS || '300000', 10), // 5 min
+    destroyTimeoutMs: parseInt(process.env.TF_DESTROY_TIMEOUT_MS || '900000', 10), // 15 min
   },
 
   github: {

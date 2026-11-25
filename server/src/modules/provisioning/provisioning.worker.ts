@@ -31,7 +31,7 @@ import { sanitizeTerraformLogs } from './log-sanitizer.js';
 import { CicdIntegrator } from '../cicd/cicd-integrator.js';
 import { GitHubIntegrator } from '../cicd/github-client.js';
 import type { ProvisioningJobData } from './types.js';
-import { APPLY_TIMEOUT_MS, DESTROY_TIMEOUT_MS } from './types.js';
+import { APPLY_TIMEOUT_MS } from './types.js';
 import type { ServiceTemplateType } from '../cicd/types.js';
 
 // ---------------------------------------------------------------------------
@@ -154,7 +154,9 @@ async function processDecommissionJob(job: Job<ProvisioningJobData>) {
       ? (await assumeProvisioningRole(serviceId, job.data.teamId, region)) as unknown as NodeJS.ProcessEnv
       : {};
     const runner = new TerraformRunner(`terraform/environments/${serviceId}`);
-    const result = await runner.destroy(serviceId, awsEnv, { timeoutMs: DESTROY_TIMEOUT_MS });
+    const result = await runner.destroy(serviceId, awsEnv, {
+      timeoutMs: config.terraform.destroyTimeoutMs,
+    });
     const sanitizedLogs = result.logs ? sanitizeTerraformLogs(result.logs) : undefined;
 
     if (!result.success) {
