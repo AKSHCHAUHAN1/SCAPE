@@ -76,6 +76,11 @@ export interface Service {
   requestedVcpu?: number;
   requestedMemoryGiB?: number;
   workloadProfile?: 'bursty' | 'balanced' | 'compute' | 'memory';
+  expectedDurationHours?: number;
+  estimatedHourlyCostUsd?: number | null;
+  estimatedTotalCostUsd?: number | null;
+  infrastructureStartedAt?: string | null;
+  infrastructureDecommissionedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -162,6 +167,8 @@ export interface AuthResponse {
 export interface CreateServiceInput {
   name: string;
   templateId: string;
+  repositoryUrl: string;
+  expectedDurationHours: number;
   region: string;
   environment: 'development' | 'staging' | 'production';
   computeMode?: 'fargate' | 'ec2';
@@ -169,6 +176,14 @@ export interface CreateServiceInput {
   requestedVcpu?: number;
   requestedMemoryGiB?: number;
   workloadProfile?: 'bursty' | 'balanced' | 'compute' | 'memory';
+}
+
+export interface GitHubRepository {
+  id: number;
+  name: string;
+  fullName: string;
+  htmlUrl: string;
+  owner: string;
 }
 
 export interface CreateServiceResponse {
@@ -183,11 +198,37 @@ export interface CreateServiceResponse {
 export interface ServiceCostResponse {
   serviceId: string;
   totalUsd: number;
+  expectedDurationHours: number;
+  estimatedHourlyCostUsd: number | null;
+  estimatedTotalCostUsd: number | null;
+  actualRuntimeHours: number | null;
   records: CostRecord[];
   resourceBreakdown: {
     resource: string;
     amountUsd: number;
   }[];
+}
+
+export interface ServiceCostEstimateInput {
+  templateId: string;
+  region: string;
+  computeMode: 'fargate' | 'ec2';
+  ec2InstanceType?: string;
+  requestedVcpu: number;
+  requestedMemoryGiB: number;
+  expectedDurationHours: number;
+}
+
+export interface ServiceCostEstimate {
+  available: boolean;
+  currency: 'USD';
+  expectedDurationHours: number;
+  hourlyEstimateUsd: number | null;
+  totalEstimateUsd: number | null;
+  includedResources: string[];
+  exclusions: string[];
+  message: string;
+  pricedAt: string | null;
 }
 
 export interface CostSummary {

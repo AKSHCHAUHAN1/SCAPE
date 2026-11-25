@@ -30,6 +30,15 @@ export async function getSummary(req: Request, res: Response, next: NextFunction
   }
 }
 
+export async function estimate(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await costService.estimateConfiguredServiceCost(req.body);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function triggerSync(_req: Request, res: Response, next: NextFunction) {
   try {
     const syncedCount = await costService.syncDailyCosts();

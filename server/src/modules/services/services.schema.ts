@@ -18,6 +18,17 @@ export const createServiceSchema = z.object({
       'Service name must be lowercase alphanumeric with hyphens, and cannot start or end with a hyphen',
     ),
   templateId: z.string().uuid('Invalid template ID'),
+  repositoryUrl: z.string().url('Enter a valid GitHub repository URL.').refine((value) => {
+    try {
+      const repository = new URL(value);
+      return repository.protocol === 'https:'
+        && repository.hostname === 'github.com'
+        && repository.pathname.split('/').filter(Boolean).length === 2;
+    } catch {
+      return false;
+    }
+  }, 'Select a repository hosted at https://github.com/owner/repository.'),
+  expectedDurationHours: z.number().int().min(1).max(8760),
   region: z
     .string()
     .min(5)

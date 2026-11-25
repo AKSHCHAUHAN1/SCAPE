@@ -45,9 +45,9 @@ Use a non-root AWS deployment identity with permission to create the bootstrap r
 
 3. Give the backend runtime principal an identity policy allowing `sts:AssumeRole` and `sts:TagSession` on `ForgeProvisioningRole`, and `sts:AssumeRole` on `CostExplorerReadRole`. For a local IAM user, store its credentials in a named AWS CLI profile and set `AWS_PROFILE` and `AWS_SDK_LOAD_CONFIG=1` in `server/.env`; never put access keys in `.env`.
 
-4. Set the returned provisioning and cost role ARNs as `AWS_PROVISIONING_ROLE_ARN` and `AWS_COST_EXPLORER_ROLE_ARN`. Set `TF_STATE_BUCKET` and `TF_LOCK_TABLE` to the same names. The local server uses these role ARNs and the backend profile to assume short-lived role sessions.
+4. Set the returned provisioning and cost role ARNs as `AWS_PROVISIONING_ROLE_ARN` and `AWS_COST_EXPLORER_ROLE_ARN`. The cost role policy includes `ce:GetCostAndUsage` for billed usage and `pricing:GetProducts` for on-demand estimates. Set `TF_STATE_BUCKET` and `TF_LOCK_TABLE` to the same names. The local server uses these role ARNs and the backend profile to assume short-lived role sessions.
 
-The GitHub App installation must have repository administration, contents write, Actions write, and webhook write permissions for the service repositories. The foundation stack creates the account OIDC provider; each service module creates a separate deploy role that trusts only that service repository's `main` branch.
+The configured GitHub App installation must include the user's selected repository and have repository administration, contents write, Actions write, and webhook write permissions. The foundation stack creates the account OIDC provider; each service module creates a separate deploy role that trusts only that service repository's `main` branch.
 
 ## Module inputs and outputs
 

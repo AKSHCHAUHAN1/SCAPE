@@ -401,7 +401,7 @@ export const ServicesPage: React.FC = () => {
                 <h3 className="text-lg font-bold text-text">Decommission Service?</h3>
                 <p className="text-xs text-text-secondary mt-1 leading-normal">
                   Are you sure you want to decommission{' '}
-                  <span className="font-semibold text-text">"{serviceToDelete.name}"</span>? SCAPE will queue Terraform to remove its cloud resources, then archive its source repository.
+                  <span className="font-semibold text-text">"{serviceToDelete.name}"</span>? SCAPE will remove its cloud infrastructure, including its database and data. Your GitHub repository and SCAPE service, job, and cost history will be retained.
                 </p>
               </div>
 

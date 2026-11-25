@@ -23,6 +23,7 @@ vi.mock('../../src/utils/logger.js', () => ({
 
 // Mock environment generator
 vi.mock('../../src/modules/provisioning/environment-generator.js', () => ({
+  cleanupEnvironment: vi.fn().mockResolvedValue(undefined),
   generateEnvironment: vi.fn().mockResolvedValue('/fake/env/dir'),
 }));
 
@@ -74,10 +75,10 @@ vi.mock('../../src/modules/cicd/cicd-integrator.js', () => ({
   })),
 }));
 
-const mockCreateRepository = vi.fn();
+const mockGetRepositoryMetadata = vi.fn();
 vi.mock('../../src/modules/cicd/github-client.js', () => ({
   GitHubIntegrator: vi.fn().mockImplementation(() => ({
-    createRepositoryFromTemplate: (...args: any[]) => mockCreateRepository(...args),
+    getRepositoryMetadata: (...args: any[]) => mockGetRepositoryMetadata(...args),
   })),
 }));
 
@@ -86,9 +87,12 @@ import { processProvisioningJob } from '../../src/modules/provisioning/provision
 describe('ProvisioningWorker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCreateRepository.mockResolvedValue({
+    mockGetRepositoryMetadata.mockResolvedValue({
       htmlUrl: 'https://github.com/org/test-svc',
       fullName: 'org/test-svc',
+      ownerId: 10,
+      repositoryId: 20,
+      hasAdminAccess: true,
     });
   });
 
@@ -132,6 +136,7 @@ describe('ProvisioningWorker', () => {
         jobId: 'job-1',
         serviceId: 'svc-123',
         serviceName: 'test-svc',
+        repositoryUrl: 'https://github.com/org/test-svc',
         templateId: 'tpl-node',
         terraformModulePath: 'terraform/modules/nodejs-api',
         region: 'ap-south-1',
@@ -175,6 +180,7 @@ describe('ProvisioningWorker', () => {
         jobId: 'job-fail-1',
         serviceId: 'svc-fail-123',
         serviceName: 'test-fail-svc',
+        repositoryUrl: 'https://github.com/org/test-fail-svc',
         templateId: 'tpl-node',
         terraformModulePath: 'terraform/modules/nodejs-api',
         region: 'ap-south-1',
@@ -186,5 +192,34 @@ describe('ProvisioningWorker', () => {
     await expect(processProvisioningJob(job as any)).rejects.toThrow();
     expect(mockApply).toHaveBeenCalledTimes(1);
     expect(mockExecuteRollback).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves the linked repository after Terraform decommission succeeds', async () => {
+    const repositoryUrl = 'https://github.com/org/test-svc';
+    mockQuery.mockResolvedValue({ rowCount: 1, rows: [] });
+    mockDestroy.mockResolvedValueOnce({
+      success: true,
+      logs: 'Destroy complete!',
+      durationMs: 100,
+    });
+
+    const job = {
+      id: 'decommission-job-1',
+      name: 'decommission',
+      data: {
+        jobId: 'decommission-job-1',
+        serviceId: 'svc-123',
+        serviceName: 'test-svc',
+        repositoryUrl,
+        triggeredBy: 'user-1',
+        teamId: 'team-1',
+        region: 'ap-south-1',
+      },
+    };
+
+    await processProvisioningJob(job as any);
+
+    expect(mockDestroy).toHaveBeenCalledTimes(1);
+    expect(mockGetRepositoryMetadata).not.toHaveBeenCalled();
   });
 });

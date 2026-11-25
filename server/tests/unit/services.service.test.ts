@@ -3,8 +3,25 @@ import { createService, getServiceById, getServiceHealth } from '../../src/modul
 import { query } from '../../src/database/index.js';
 import { provisioningQueue } from '../../src/queue/index.js';
 
+const { mockGetRepositoryMetadata, mockListAccessibleRepositories, mockEstimateServiceCost } = vi.hoisted(() => ({
+  mockGetRepositoryMetadata: vi.fn(),
+  mockListAccessibleRepositories: vi.fn(),
+  mockEstimateServiceCost: vi.fn(),
+}));
+
 vi.mock('../../src/database/index.js', () => ({
   query: vi.fn(),
+}));
+
+vi.mock('../../src/modules/cicd/github-client.js', () => ({
+  GitHubIntegrator: vi.fn().mockImplementation(() => ({
+    getRepositoryMetadata: mockGetRepositoryMetadata,
+    listAccessibleRepositories: mockListAccessibleRepositories,
+  })),
+}));
+
+vi.mock('../../src/modules/cost/cost-estimator.js', () => ({
+  estimateServiceCost: mockEstimateServiceCost,
 }));
 
 vi.mock('../../src/queue/index.js', () => ({
@@ -20,6 +37,24 @@ vi.mock('../../src/modules/audit/audit.service.js', () => ({
 describe('Services Service - Unit Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetRepositoryMetadata.mockResolvedValue({
+      htmlUrl: 'https://github.com/acme/my-service',
+      fullName: 'acme/my-service',
+      ownerId: 1,
+      repositoryId: 2,
+      hasAdminAccess: true,
+    });
+    mockEstimateServiceCost.mockResolvedValue({
+      available: true,
+      currency: 'USD',
+      expectedDurationHours: 24,
+      hourlyEstimateUsd: 0.1,
+      totalEstimateUsd: 2.4,
+      includedResources: [],
+      exclusions: [],
+      message: 'estimate',
+      pricedAt: new Date().toISOString(),
+    });
   });
 
   afterEach(() => {
@@ -33,7 +68,7 @@ describe('Services Service - Unit Tests', () => {
 
       // 1. Verify template exists
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 'tpl-1', terraform_module_path: 'path/to/tf' }],
+        rows: [{ id: 'tpl-1', terraform_module_path: 'path/to/tf', template_type: 'nodejs-api' }],
         rowCount: 1, command: '', oid: 0, fields: []
       });
 
@@ -53,7 +88,13 @@ describe('Services Service - Unit Tests', () => {
       });
 
       const result = await createService(
-        { name: 'my-service', templateId: 'tpl-1', region: 'us-east-1' },
+        {
+          name: 'my-service',
+          templateId: 'tpl-1',
+          region: 'us-east-1',
+          repositoryUrl: 'https://github.com/acme/my-service',
+          expectedDurationHours: 24,
+        },
         'user-1',
         'team-1'
       );
@@ -64,7 +105,37 @@ describe('Services Service - Unit Tests', () => {
         jobId: 'job-1',
         serviceId: 'srv-1',
         terraformModulePath: 'path/to/tf',
+        repositoryUrl: 'https://github.com/acme/my-service',
       }), { jobId: 'job-1' });
+      const serviceInsertValues = mockQuery.mock.calls[2][1] as unknown[];
+      expect(serviceInsertValues.slice(11)).toEqual([
+        'https://github.com/acme/my-service',
+        24,
+        0.1,
+        2.4,
+      ]);
+    });
+
+    it('requires administrator access to the selected repository', async () => {
+      mockGetRepositoryMetadata.mockResolvedValueOnce({
+        htmlUrl: 'https://github.com/acme/my-service',
+        fullName: 'acme/my-service',
+        ownerId: 1,
+        repositoryId: 2,
+        hasAdminAccess: false,
+      });
+
+      await expect(createService({
+        name: 'my-service',
+        templateId: 'tpl-1',
+        region: 'us-east-1',
+        repositoryUrl: 'https://github.com/acme/my-service',
+        expectedDurationHours: 24,
+      }, 'user-1', 'team-1')).rejects.toMatchObject({
+        statusCode: 422,
+        code: 'GITHUB_ADMIN_ACCESS_REQUIRED',
+      });
+      expect(query).not.toHaveBeenCalled();
     });
 
     it('should throw if template does not exist', async () => {
@@ -72,7 +143,13 @@ describe('Services Service - Unit Tests', () => {
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0, command: '', oid: 0, fields: [] });
 
       await expect(
-        createService({ name: 'test', templateId: 'invalid', region: 'us-east-1' }, 'u1', 't1')
+        createService({
+          name: 'test',
+          templateId: 'invalid',
+          region: 'us-east-1',
+          repositoryUrl: 'https://github.com/acme/my-service',
+          expectedDurationHours: 24,
+        }, 'u1', 't1')
       ).rejects.toMatchObject({ statusCode: 404 });
     });
   });

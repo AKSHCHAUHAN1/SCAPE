@@ -348,7 +348,7 @@ resource "aws_iam_role_policy" "cost_explorer" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Action   = ["ce:GetCostAndUsage"]
+      Action   = ["ce:GetCostAndUsage", "pricing:GetProducts"]
       Effect   = "Allow"
       Resource = "*"
     }]

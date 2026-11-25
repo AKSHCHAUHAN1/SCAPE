@@ -5,6 +5,7 @@ import type {
   CreateServiceResponse,
   ProvisioningJob,
   ServiceHealth,
+  GitHubRepository,
 } from '../types/index.js';
 
 export const servicesApi = {
@@ -13,6 +14,11 @@ export const servicesApi = {
    */
   async getServices(): Promise<Service[]> {
     const { data } = await apiClient.get<Service[]>('/services');
+    return data;
+  },
+
+  async getGitHubRepositories(): Promise<GitHubRepository[]> {
+    const { data } = await apiClient.get<GitHubRepository[]>('/services/github/repositories');
     return data;
   },
 

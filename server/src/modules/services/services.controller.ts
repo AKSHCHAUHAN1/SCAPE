@@ -34,6 +34,16 @@ export async function getAll(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+/** GET /services/github/repositories */
+export async function getGitHubRepositories(_req: Request, res: Response, next: NextFunction) {
+  try {
+    const repositories = await servicesService.getGitHubRepositories();
+    res.json(repositories);
+  } catch (err) {
+    next(err);
+  }
+}
+
 /**
  * GET /services/:id
  */

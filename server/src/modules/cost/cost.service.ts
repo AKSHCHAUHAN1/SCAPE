@@ -1,8 +1,11 @@
 import { query } from '../../database/index.js';
+import { AppError } from '../../middleware/errorHandler.js';
 import { getServiceById } from '../services/services.service.js';
 import { AwsCostExplorerClient } from './explorer-client.js';
 import { logger } from '../../utils/logger.js';
 import type { RecordCostInput } from './cost.schema.js';
+import type { ServiceCostEstimateRequest } from './cost.schema.js';
+import { estimateServiceCost as estimateInfrastructureCost } from './cost-estimator.js';
 
 interface CostRecordRow {
   id: string;
@@ -14,6 +17,25 @@ interface CostRecordRow {
   aws_resource_ids: any;
   synced_at: Date;
   created_at: Date;
+}
+
+export async function estimateConfiguredServiceCost(input: ServiceCostEstimateRequest) {
+  const template = await query<{ terraform_module_path: string }>(
+    'SELECT terraform_module_path FROM service_templates WHERE id = $1 AND is_active = true',
+    [input.templateId],
+  );
+  if (!template.rowCount) {
+    throw new AppError(404, 'TEMPLATE_NOT_FOUND', 'Service template not found or inactive.');
+  }
+  return estimateInfrastructureCost({
+    region: input.region,
+    modulePath: template.rows[0].terraform_module_path,
+    computeMode: input.computeMode,
+    ec2InstanceType: input.ec2InstanceType,
+    requestedVcpu: input.requestedVcpu,
+    requestedMemoryGiB: input.requestedMemoryGiB,
+    expectedDurationHours: input.expectedDurationHours,
+  });
 }
 
 function formatCostRecord(row: CostRecordRow) {
@@ -43,7 +65,7 @@ export async function getCostsByServiceId(
   teamId: string,
   userRole: string,
 ) {
-  await getServiceById(serviceId, teamId, userRole);
+  const service = await getServiceById(serviceId, teamId, userRole);
 
   let q = `SELECT * FROM cost_records WHERE service_id = $1`;
   const params: any[] = [serviceId];
@@ -60,6 +82,15 @@ export async function getCostsByServiceId(
 
   // Calculate aggregations
   const totalAmount = records.reduce((acc, curr) => acc + curr.amountUsd, 0);
+  const startedAt = service.infrastructureStartedAt
+    ? new Date(service.infrastructureStartedAt).getTime()
+    : null;
+  const completedAt = service.infrastructureDecommissionedAt
+    ? new Date(service.infrastructureDecommissionedAt).getTime()
+    : Date.now();
+  const actualRuntimeHours = startedAt === null
+    ? null
+    : Math.max(0, (completedAt - startedAt) / (60 * 60 * 1000));
 
   // Group by resource
   const resourceBreakdown: Record<string, number> = {};
@@ -72,6 +103,10 @@ export async function getCostsByServiceId(
   return {
     serviceId,
     totalUsd: parseFloat(totalAmount.toFixed(2)),
+    expectedDurationHours: service.expectedDurationHours,
+    estimatedHourlyCostUsd: service.estimatedHourlyCostUsd,
+    estimatedTotalCostUsd: service.estimatedTotalCostUsd,
+    actualRuntimeHours: actualRuntimeHours === null ? null : Number(actualRuntimeHours.toFixed(2)),
     records,
     resourceBreakdown: Object.entries(resourceBreakdown).map(([name, amount]) => ({
       resource: name,
@@ -192,25 +227,46 @@ export async function upsertCostRecord(input: RecordCostInput) {
 export async function syncDailyCosts() {
   const client = new AwsCostExplorerClient();
   const today = new Date();
-  const yesterday = new Date(Date.now() - 24 * 3600 * 1000);
-  const startDate = yesterday.toISOString().split('T')[0];
+  const lookbackStart = new Date(Date.now() - 14 * 24 * 3600 * 1000);
+  const startDate = lookbackStart.toISOString().split('T')[0];
   const endDate = today.toISOString().split('T')[0];
 
   const items = await client.fetchCostsByService(startDate, endDate);
 
   if (items.length > 0) {
+    const dailyServiceCosts = new Map<string, {
+      serviceId: string;
+      periodStart: string;
+      periodEnd: string;
+      amountUsd: number;
+      resourceIds: Set<string>;
+    }>();
     for (const item of items) {
-      await upsertCostRecord({
+      const key = `${item.serviceId}:${item.periodStart}:${item.periodEnd}`;
+      const current = dailyServiceCosts.get(key) ?? {
         serviceId: item.serviceId,
         periodStart: item.periodStart,
         periodEnd: item.periodEnd,
-        amountUsd: item.amountUsd,
+        amountUsd: 0,
+        resourceIds: new Set<string>(),
+      };
+      current.amountUsd += item.amountUsd;
+      item.resourceIds.forEach((resourceId) => current.resourceIds.add(resourceId));
+      dailyServiceCosts.set(key, current);
+    }
+
+    for (const dailyCost of dailyServiceCosts.values()) {
+      await upsertCostRecord({
+        serviceId: dailyCost.serviceId,
+        periodStart: dailyCost.periodStart,
+        periodEnd: dailyCost.periodEnd,
+        amountUsd: dailyCost.amountUsd,
         currency: 'USD',
-        awsResourceIds: item.resourceIds,
+        awsResourceIds: [...dailyCost.resourceIds],
       });
     }
-    logger.info({ count: items.length }, 'Synced AWS Cost Explorer records');
-    return items.length;
+    logger.info({ count: dailyServiceCosts.size }, 'Synced AWS Cost Explorer records');
+    return dailyServiceCosts.size;
   }
 
   return 0;

@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout.js';
 import { ProvisioningProgress } from '../../components/feedback/ProvisioningProgress.js';
 import { useTemplates } from '../../hooks/useTemplates.js';
-import { useCreateService } from '../../hooks/useServices.js';
+import { useCreateService, useGitHubRepositories } from '../../hooks/useServices.js';
 import { useServiceJobs } from '../../hooks/useServiceDetail.js';
+import { useServiceCostEstimate } from '../../hooks/useCosts.js';
 import type { JobStatus } from '../../types/index.js';
 import {
   EC2_INSTANCE_OPTIONS,
@@ -33,9 +34,10 @@ export const CreateServicePage: React.FC = () => {
 
   const { data: templates = [], isLoading: templatesLoading } = useTemplates();
   const createServiceMutation = useCreateService();
+  const { data: githubRepositories = [], isLoading: repositoriesLoading, error: repositoriesError } = useGitHubRepositories();
 
   // Wizard state
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [serviceName, setServiceName] = useState('');
   const [region, setRegion] = useState('');
@@ -48,6 +50,8 @@ export const CreateServicePage: React.FC = () => {
   const [advisorEnabled, setAdvisorEnabled] = useState(false);
   const [serviceUseCase, setServiceUseCase] = useState<ServiceUseCase>('unsure');
   const [apiRuntime, setApiRuntime] = useState<ApiRuntime>('undecided');
+  const [repositoryUrl, setRepositoryUrl] = useState('');
+  const [expectedDurationHours, setExpectedDurationHours] = useState(24);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Completed provisioning state
@@ -68,7 +72,15 @@ export const CreateServicePage: React.FC = () => {
     requestedMemoryGiB,
     workloadProfile,
   );
-
+  const costEstimateInput = {
+    templateId: selectedTemplate?.id ?? '',
+    region,
+    computeMode,
+    ...(computeMode === 'ec2' ? { ec2InstanceType } : {}),
+    requestedVcpu,
+    requestedMemoryGiB,
+    expectedDurationHours,
+  };
   // Validation
   const isValidName = /^[a-z0-9-]+$/.test(serviceName) && serviceName.length >= 3;
   const isValidRegion = region.trim().length >= 5
@@ -76,6 +88,13 @@ export const CreateServicePage: React.FC = () => {
     && /^[a-z0-9]+(?:-[a-z0-9]+)+-\d+$/.test(region.trim());
   const isValidInstanceType = computeMode !== 'ec2'
     || isSupportedEc2InstanceType(ec2InstanceType.trim());
+  const isValidDuration = Number.isInteger(expectedDurationHours)
+    && expectedDurationHours >= 1
+    && expectedDurationHours <= 8760;
+  const costEstimateQuery = useServiceCostEstimate(
+    costEstimateInput,
+    currentStep === 4 && Boolean(costEstimateInput.templateId) && isValidDuration,
+  );
 
   const handleNext = () => {
     setErrorMsg(null);
@@ -98,6 +117,16 @@ export const CreateServicePage: React.FC = () => {
         return;
       }
       setCurrentStep(3);
+    } else if (currentStep === 3) {
+      if (!repositoryUrl || !githubRepositories.some((repository) => repository.htmlUrl === repositoryUrl)) {
+        setErrorMsg('Select a repository available to the SCAPE GitHub App installation.');
+        return;
+      }
+      if (!isValidDuration) {
+        setErrorMsg('Expected duration must be between 1 hour and 1 year.');
+        return;
+      }
+      setCurrentStep(4);
     }
   };
 
@@ -105,6 +134,7 @@ export const CreateServicePage: React.FC = () => {
     setErrorMsg(null);
     if (currentStep === 2) setCurrentStep(1);
     if (currentStep === 3) setCurrentStep(2);
+    if (currentStep === 4) setCurrentStep(3);
   };
 
   const handleSubmit = async () => {
@@ -115,6 +145,8 @@ export const CreateServicePage: React.FC = () => {
       const res = await createServiceMutation.mutateAsync({
         name: serviceName,
         templateId,
+        repositoryUrl,
+        expectedDurationHours,
         region,
         environment,
         computeMode: selectedTemplate?.templateType === 'static-frontend' ? 'fargate' : computeMode,
@@ -129,7 +161,7 @@ export const CreateServicePage: React.FC = () => {
       setCreatedServiceId(res.service.id);
       setCreatedJobId(res.job.id);
       setSubmittedStatus(res.job.status);
-      setCurrentStep(4);
+      setCurrentStep(5);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to submit service creation';
       setErrorMsg(message);
@@ -141,7 +173,7 @@ export const CreateServicePage: React.FC = () => {
     setPreviewOnly(true);
     setCreatedServiceId(null);
     setCreatedJobId(null);
-    setCurrentStep(4);
+    setCurrentStep(5);
   };
 
   return (
@@ -160,12 +192,13 @@ export const CreateServicePage: React.FC = () => {
         </div>
 
         {/* Wizard Stepper (Only when steps 1-3) */}
-        {currentStep < 4 && (
+        {currentStep < 5 && (
           <div className="flex items-center justify-between p-4 rounded-2xl bg-surface border border-border">
             {[
               { num: 1, title: 'Select Template' },
               { num: 2, title: 'Configuration' },
-              { num: 3, title: 'Review & Deploy' },
+              { num: 3, title: 'Connect Repository' },
+              { num: 4, title: 'Review & Deploy' },
             ].map((st, idx) => (
               <React.Fragment key={st.num}>
                 <div className="flex items-center gap-3">
@@ -191,7 +224,7 @@ export const CreateServicePage: React.FC = () => {
                   </div>
                 </div>
 
-                {idx < 2 && <div className="flex-1 mx-4 h-[1px] bg-border hidden sm:block" />}
+                {idx < 3 && <div className="flex-1 mx-4 h-[1px] bg-border hidden sm:block" />}
               </React.Fragment>
             ))}
           </div>
@@ -637,8 +670,97 @@ export const CreateServicePage: React.FC = () => {
           </div>
         )}
 
-        {/* ================= STEP 3: REVIEW & CONFIRM ================= */}
+        {/* ================= STEP 3: CONNECT REPOSITORY ================= */}
         {currentStep === 3 && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-lg font-bold text-text">Connect your GitHub repository</h2>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Choose a repository you own that is available to the SCAPE GitHub App. SCAPE will add the deployment workflow but will not delete or archive your repository.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-surface p-6 space-y-5">
+              <div>
+                <label htmlFor="github-repository" className="mb-1.5 block text-xs font-semibold text-text">
+                  Repository <span className="text-danger">*</span>
+                </label>
+                <select
+                  id="github-repository"
+                  value={repositoryUrl}
+                  onChange={(event) => setRepositoryUrl(event.target.value)}
+                  disabled={repositoriesLoading}
+                  className="w-full rounded-xl border border-border bg-bg-secondary px-3.5 py-2.5 text-sm text-text disabled:opacity-60"
+                >
+                  <option value="">
+                    {repositoriesLoading ? 'Loading connected repositories…' : 'Select a repository'}
+                  </option>
+                  {githubRepositories.map((repository) => (
+                    <option key={repository.id} value={repository.htmlUrl}>{repository.fullName}</option>
+                  ))}
+                </select>
+                {repositoriesError && (
+                  <p className="mt-2 text-[11px] text-danger">
+                    Could not load repositories. Check that the SCAPE GitHub App installation is configured and try again.
+                  </p>
+                )}
+                {!repositoriesLoading && !repositoriesError && githubRepositories.length === 0 && (
+                  <p className="mt-2 text-[11px] text-text-muted">
+                    No repositories are available. Install the SCAPE GitHub App on the repository owner or organization, then refresh this page.
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] text-text-muted">
+                  SCAPE needs repository administrator access to install the deployment webhook and workflow.
+                </p>
+              </div>
+
+              <div>
+                <label htmlFor="expected-duration" className="mb-1.5 block text-xs font-semibold text-text">
+                  Expected infrastructure lifetime (hours) <span className="text-danger">*</span>
+                </label>
+                <input
+                  id="expected-duration"
+                  type="number"
+                  min={1}
+                  max={8760}
+                  step={1}
+                  value={expectedDurationHours}
+                  onChange={(event) => setExpectedDurationHours(Number(event.target.value))}
+                  aria-invalid={!isValidDuration}
+                  className="w-full rounded-xl border border-border bg-bg-secondary px-3.5 py-2.5 font-mono text-sm text-text"
+                />
+                <p className="mt-1.5 text-[11px] text-text-muted">
+                  SCAPE will compare this planned duration with the actual time from successful provisioning to completed decommission.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <button onClick={handleBack} className="inline-flex items-center gap-1.5 rounded-xl border border-border px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-bg-secondary">
+                <ChevronLeft className="h-4 w-4" /><span>Back</span>
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleLocalPreview}
+                  className="rounded-xl border border-border bg-surface px-4 py-2.5 text-xs font-semibold text-text-secondary hover:bg-bg-secondary"
+                >
+                  Preview locally
+                </button>
+                <button
+                  onClick={handleNext}
+                  disabled={!repositoryUrl || !isValidDuration || repositoriesLoading || Boolean(repositoriesError)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-xs font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
+                >
+                  <span>Review & Confirm</span><ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= STEP 4: REVIEW & CONFIRM ================= */}
+        {currentStep === 4 && (
           <div className="space-y-6">
             <div>
               <h2 className="text-lg font-bold text-text">Review Deployment Architecture</h2>
@@ -669,6 +791,16 @@ export const CreateServicePage: React.FC = () => {
                   <span className="text-[11px] text-text-muted block mb-1">Target Environment</span>
                   <span className="text-sm font-semibold text-emerald-400 capitalize">{environment}</span>
                 </div>
+                <div className="p-3.5 rounded-xl bg-bg-secondary border border-border/60">
+                  <span className="text-[11px] text-text-muted block mb-1">Connected repository</span>
+                  <a href={repositoryUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary hover:underline">
+                    {githubRepositories.find((repository) => repository.htmlUrl === repositoryUrl)?.fullName ?? repositoryUrl}
+                  </a>
+                </div>
+                <div className="p-3.5 rounded-xl bg-bg-secondary border border-border/60">
+                  <span className="text-[11px] text-text-muted block mb-1">Expected lifetime</span>
+                  <span className="text-sm font-semibold text-text">{expectedDurationHours} hours</span>
+                </div>
                 {selectedTemplate?.templateType !== 'static-frontend' && (
                   <>
                     <div className="p-3.5 rounded-xl bg-bg-secondary border border-border/60">
@@ -683,6 +815,37 @@ export const CreateServicePage: React.FC = () => {
                 )}
               </div>
 
+              <section className="rounded-xl border border-secondary/20 bg-secondary/5 p-4" aria-live="polite">
+                <h3 className="text-xs font-bold text-text">Estimated infrastructure cost</h3>
+                {costEstimateQuery.isLoading ? (
+                  <p className="mt-2 text-xs text-text-secondary">Retrieving current AWS on-demand rates…</p>
+                ) : costEstimateQuery.error ? (
+                  <p className="mt-2 text-xs text-danger">
+                    Could not calculate a cost estimate. Check AWS Pricing API access and try again; provisioning is disabled until the estimate is available.
+                  </p>
+                ) : costEstimateQuery.data?.available ? (
+                  <>
+                    <p className="mt-2 text-lg font-bold text-text">
+                      ${costEstimateQuery.data.totalEstimateUsd?.toFixed(2)} USD
+                      <span className="ml-2 text-xs font-medium text-text-secondary">
+                        for {expectedDurationHours} hours (${costEstimateQuery.data.hourlyEstimateUsd?.toFixed(4)}/hour)
+                      </span>
+                    </p>
+                    <p className="mt-1 text-[11px] text-text-secondary">{costEstimateQuery.data.message}</p>
+                    <p className="mt-1 text-[11px] text-text-muted">
+                      Includes: {costEstimateQuery.data.includedResources.join(', ')}.
+                    </p>
+                    <p className="mt-1 text-[11px] text-text-muted">
+                      This is an estimate, not a quote. Actual AWS-billed costs are shown after Cost Explorer reports them.
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-2 text-xs text-text-secondary">
+                    {costEstimateQuery.data?.message ?? 'Estimate is not available for this configuration.'}
+                  </p>
+                )}
+              </section>
+
               {/* IAM Least-Privilege & State Security */}
               <div className="space-y-2">
                 <h4 className="text-xs font-bold text-text flex items-center gap-1.5">
@@ -692,6 +855,7 @@ export const CreateServicePage: React.FC = () => {
                 <div className="p-3.5 rounded-xl bg-bg-secondary/40 border border-border/60 text-xs text-text-secondary space-y-1.5 leading-relaxed">
                   <p>• The AWS account and region are selected explicitly before provisioning.</p>
                   <p>• GitHub Actions workflows are generated for the selected service template.</p>
+                  <p>• SCAPE preserves your GitHub repository and service, job, and cost history when you decommission infrastructure.</p>
                   <p>• If AWS or GitHub is not connected yet, use this page to preview the architecture; provisioning requires those integrations.</p>
                 </div>
               </div>
@@ -715,7 +879,7 @@ export const CreateServicePage: React.FC = () => {
                 </button>
                 <button
                   onClick={handleSubmit}
-                  disabled={createServiceMutation.isPending}
+                  disabled={createServiceMutation.isPending || costEstimateQuery.isLoading || Boolean(costEstimateQuery.error)}
                   className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-gradient-to-r from-primary to-primary-hover hover:shadow-lg hover:shadow-primary/30 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
                 >
                   <Zap className="w-4 h-4" />
@@ -726,8 +890,8 @@ export const CreateServicePage: React.FC = () => {
           </div>
         )}
 
-        {/* ================= STEP 4: LIVE PROVISIONING ================= */}
-        {currentStep === 4 && (
+        {/* ================= STEP 5: LIVE PROVISIONING ================= */}
+        {currentStep === 5 && (
           previewOnly ? (
             <section className="space-y-6">
               <div className="rounded-2xl border border-primary/20 bg-primary/5 p-6 sm:p-8">

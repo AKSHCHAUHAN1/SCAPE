@@ -185,6 +185,33 @@ export const CostDashboardPage: React.FC = () => {
           </div>
         )}
 
+        {isPerService && serviceCost && (
+          <section className="grid gap-3 rounded-2xl border border-border bg-white p-4 shadow-sm sm:grid-cols-3 sm:p-5" aria-label="Service estimate and runtime">
+            <div>
+              <p className="text-xs font-medium text-text-secondary">Planned duration</p>
+              <p className="mt-1 text-lg font-bold text-text">{serviceCost.expectedDurationHours} hours</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-text-secondary">Infrastructure estimate</p>
+              <p className="mt-1 text-lg font-bold text-text">
+                {serviceCost.estimatedTotalCostUsd === null
+                  ? 'Usage-based'
+                  : `$${serviceCost.estimatedTotalCostUsd.toFixed(2)} USD`}
+              </p>
+              <p className="mt-1 text-[11px] text-text-muted">Estimate only; AWS-reported spend is shown separately.</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-text-secondary">Actual infrastructure runtime</p>
+              <p className="mt-1 text-lg font-bold text-text">
+                {serviceCost.actualRuntimeHours === null ? 'Not started' : `${serviceCost.actualRuntimeHours} hours`}
+              </p>
+              <p className="mt-1 text-[11px] text-text-muted">
+                AWS actual spend so far: ${serviceCost.totalUsd.toFixed(2)} USD
+              </p>
+            </div>
+          </section>
+        )}
+
         {loadError && (
           <div className="flex items-start gap-3 rounded-2xl border border-danger/20 bg-danger/5 p-4 text-sm text-danger" role="alert">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />

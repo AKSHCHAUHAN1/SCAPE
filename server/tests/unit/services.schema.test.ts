@@ -5,6 +5,8 @@ const baseInput = {
   name: 'demo-api',
   templateId: 'c1d2e3f4-0001-4000-8000-000000000001',
   region: 'eu-west-1',
+  repositoryUrl: 'https://github.com/acme/demo-api',
+  expectedDurationHours: 24,
 };
 
 describe('createServiceSchema', () => {
@@ -36,6 +38,17 @@ describe('createServiceSchema', () => {
       ...baseInput,
       requestedVcpu: 0.25,
       requestedMemoryGiB: 4,
+    }).success).toBe(false);
+  });
+
+  it('requires an HTTPS GitHub repository and a bounded expected duration', () => {
+    expect(createServiceSchema.safeParse({
+      ...baseInput,
+      repositoryUrl: 'https://github.com.evil.example/acme/demo-api',
+    }).success).toBe(false);
+    expect(createServiceSchema.safeParse({
+      ...baseInput,
+      expectedDurationHours: 0,
     }).success).toBe(false);
   });
 });

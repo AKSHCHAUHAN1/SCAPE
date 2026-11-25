@@ -64,12 +64,6 @@ export const config = {
     privateKeyPath: process.env.GITHUB_APP_PRIVATE_KEY_PATH || '',
     webhookSecret: process.env.GITHUB_WEBHOOK_SECRET || '',
     installationId: process.env.GITHUB_APP_INSTALLATION_ID || '',
-    repositoryOwner: process.env.GITHUB_REPOSITORY_OWNER || '',
-    templateOwner: process.env.GITHUB_TEMPLATE_OWNER || '',
-    nodejsApiTemplateRepo: process.env.GITHUB_NODEJS_API_TEMPLATE_REPO || '',
-    pythonApiTemplateRepo: process.env.GITHUB_PYTHON_API_TEMPLATE_REPO || '',
-    containerApiTemplateRepo: process.env.GITHUB_CONTAINER_API_TEMPLATE_REPO || '',
-    staticFrontendTemplateRepo: process.env.GITHUB_STATIC_FRONTEND_TEMPLATE_REPO || '',
   },
 
   publicUrl: process.env.SCAPE_PUBLIC_URL || process.env.PUBLIC_URL || '',

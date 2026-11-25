@@ -1,5 +1,10 @@
 import apiClient from './index.js';
-import type { ServiceCostResponse, CostSummary } from '../types/index.js';
+import type {
+  ServiceCostResponse,
+  CostSummary,
+  ServiceCostEstimate,
+  ServiceCostEstimateInput,
+} from '../types/index.js';
 
 export const costsApi = {
   /**
@@ -18,6 +23,11 @@ export const costsApi = {
    */
   async getCostSummary(): Promise<CostSummary> {
     const { data } = await apiClient.get<CostSummary>('/costs/summary');
+    return data;
+  },
+
+  async estimateServiceCost(input: ServiceCostEstimateInput): Promise<ServiceCostEstimate> {
+    const { data } = await apiClient.post<ServiceCostEstimate>('/costs/estimate', input);
     return data;
   },
 

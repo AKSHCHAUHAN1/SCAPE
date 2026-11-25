@@ -104,6 +104,12 @@ async function updateServiceStatus(
     q += `, service_endpoint = $${nextParam++}`;
     values.push(serviceEndpoint);
   }
+  if (status === 'active') {
+    q += ', infrastructure_started_at = COALESCE(infrastructure_started_at, NOW())';
+  }
+  if (status === 'decommissioned') {
+    q += ', infrastructure_decommissioned_at = NOW()';
+  }
 
   q += ' WHERE id = $1';
   await query(q, values);
@@ -144,7 +150,7 @@ async function assumeProvisioningRole(serviceId: string, teamId: string, region 
 // ---------------------------------------------------------------------------
 
 async function processDecommissionJob(job: Job<ProvisioningJobData>) {
-  const { jobId, serviceId, serviceName, repositoryUrl, triggeredBy, region } = job.data;
+  const { jobId, serviceId, serviceName, triggeredBy, region } = job.data;
   logger.info({ jobId, serviceId }, 'Starting service decommission job');
   await updateJobStatus(jobId, 'running');
   await updateServiceStatus(serviceId, 'decommissioning');
@@ -163,9 +169,6 @@ async function processDecommissionJob(job: Job<ProvisioningJobData>) {
       throw new Error(result.error || 'Terraform destroy failed');
     }
 
-    if (repositoryUrl) {
-      await new GitHubIntegrator().archiveRepository(repositoryUrl);
-    }
     await cleanupEnvironment(serviceId);
     await updateJobStatus(jobId, 'succeeded', { terraformLogs: sanitizedLogs });
     await updateServiceStatus(serviceId, 'decommissioned');
@@ -200,6 +203,7 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
       jobId,
       serviceId,
       serviceName,
+      repositoryUrl,
       templateId,
       templateType: queuedTemplateType,
       terraformModulePath,
@@ -226,11 +230,13 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
 
     try {
       const github = new GitHubIntegrator();
-      const sourceRepository = await github.createRepositoryFromTemplate({
-        serviceId,
-        serviceName,
-        templateType: templateType as ServiceTemplateType,
-      });
+      if (!repositoryUrl) {
+        throw new Error('A connected GitHub repository is required to provision this service.');
+      }
+      const sourceRepository = await github.getRepositoryMetadata(repositoryUrl);
+      if (!sourceRepository.hasAdminAccess) {
+        throw new Error('SCAPE needs administrator access to the selected GitHub repository to configure deployment.');
+      }
       await updateServiceStatus(serviceId, 'provisioning', sourceRepository.htmlUrl);
 
       // ── 1. Assume IAM Role ──

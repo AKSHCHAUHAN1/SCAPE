@@ -8,6 +8,7 @@ export const serviceRoutes = Router();
 
 serviceRoutes.post('/', authenticate, validate(createServiceSchema), servicesController.create);
 serviceRoutes.get('/', authenticate, servicesController.getAll);
+serviceRoutes.get('/github/repositories', authenticate, servicesController.getGitHubRepositories);
 serviceRoutes.get('/:id/health', authenticate, servicesController.getHealth);
 serviceRoutes.get('/:id', authenticate, servicesController.getById);
 serviceRoutes.delete('/:id', authenticate, servicesController.remove);

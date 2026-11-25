@@ -100,7 +100,8 @@ describe('Services Endpoints - Integration Tests', () => {
         ownerId: '11111111-1111-1111-1111-111111111111',
         status: 'pending',
         region: 'us-east-1',
-        repositoryUrl: null,
+        repositoryUrl: 'https://github.com/company/user-auth-service',
+        expectedDurationHours: 24,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       } as any);
@@ -111,6 +112,8 @@ describe('Services Endpoints - Integration Tests', () => {
         .send({
           name: 'user-auth-service',
           templateId: '33333333-3333-3333-3333-333333333333',
+          repositoryUrl: 'https://github.com/company/user-auth-service',
+          expectedDurationHours: 24,
           teamId: '22222222-2222-2222-2222-222222222222',
           region: 'us-east-1',
           config: {

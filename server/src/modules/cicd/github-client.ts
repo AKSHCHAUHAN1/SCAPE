@@ -21,8 +21,6 @@ import type {
   WebhookRegistrationPayload,
   WebhookRegistrationResult,
 } from './types.js';
-import type { ServiceTemplateType } from './types.js';
-import { config } from '../../config/index.js';
 
 // ---------------------------------------------------------------------------
 // Retry Configuration
@@ -79,114 +77,57 @@ export class GitHubIntegrator {
   private async requireOctokit(): Promise<Octokit> {
     const octokit = await this.octokitPromise;
     if (!octokit) {
-      throw new Error('GitHub App credentials are required to provision a source repository.');
+      throw new Error('GitHub App credentials are required to access the selected repository.');
     }
     return octokit;
   }
 
-  /** Create a service repository from the configured template repository. */
-  async createRepositoryFromTemplate(payload: {
-    serviceId: string;
-    serviceName: string;
-    templateType: ServiceTemplateType;
-  }): Promise<{ htmlUrl: string; fullName: string; ownerId: number; repositoryId: number }> {
-    const templateRepos: Record<ServiceTemplateType, string> = {
-      'static-frontend': config.github.staticFrontendTemplateRepo,
-      'nodejs-api': config.github.nodejsApiTemplateRepo,
-      'python-api': config.github.pythonApiTemplateRepo,
-      'container-api': config.github.containerApiTemplateRepo,
-    };
-    const templateRepo = templateRepos[payload.templateType];
-    const owner = config.github.repositoryOwner;
-    const templateOwner = config.github.templateOwner;
-
-    if (!owner || !templateOwner || !templateRepo) {
-      throw new Error('GitHub repository owner and service template repositories must be configured.');
-    }
-
+  /** Return repositories available to the configured GitHub App installation. */
+  async listAccessibleRepositories(): Promise<Array<{
+    id: number;
+    name: string;
+    fullName: string;
+    htmlUrl: string;
+    owner: string;
+  }>> {
     const octokit = await this.requireOctokit();
-    const repositoryName = `${payload.serviceName.slice(0, 90)}-${payload.serviceId.slice(0, 8)}`;
-    const marker = `[scape-service:${payload.serviceId}]`;
-    const description = `SCAPE service ${payload.serviceName} ${marker}`;
-
-    try {
-      const { data } = await withRetry(
-        () => octokit.repos.createUsingTemplate({
-          template_owner: templateOwner,
-          template_repo: templateRepo,
-          owner,
-          name: repositoryName,
-          description,
-          private: true,
-          include_all_branches: false,
-        }),
-        'createRepositoryFromTemplate',
-      );
-      return {
-        htmlUrl: data.html_url,
-        fullName: data.full_name,
-        ownerId: data.owner.id,
-        repositoryId: data.id,
-      };
-    } catch (err) {
-      const status = (err as { status?: number; response?: { status?: number } }).status
-        ?? (err as { response?: { status?: number } }).response?.status;
-      if (status !== 422) throw err;
-
-      const existingRepository = await octokit.repos
-        .get({ owner, repo: repositoryName })
-        .catch((lookupError) => {
-          const lookupStatus = (lookupError as { status?: number; response?: { status?: number } }).status
-            ?? (lookupError as { response?: { status?: number } }).response?.status;
-          if (lookupStatus !== 404) throw lookupError;
-
-          const responseData = (err as {
-            response?: {
-              data?: {
-                message?: string;
-                errors?: Array<string | { message?: string; code?: string; field?: string }>;
-              };
-            };
-          }).response?.data;
-          const validationDetails = responseData?.errors?.map((issue) => {
-            if (typeof issue === 'string') return issue;
-            return issue.message || [issue.field, issue.code].filter(Boolean).join(' ');
-          }).filter(Boolean) || [];
-          const reason = [responseData?.message, ...validationDetails].filter(Boolean).join(': ')
-            || (err instanceof Error ? err.message : 'GitHub returned a validation error.');
-
-          logger.error(
-            { template: `${templateOwner}/${templateRepo}`, repository: `${owner}/${repositoryName}`, status },
-            'GitHub rejected repository generation from template',
-          );
-          throw new Error(
-            `GitHub could not create ${owner}/${repositoryName} from template `
-            + `${templateOwner}/${templateRepo}: ${reason}`,
-          );
-        });
-      const { data } = existingRepository;
-
-      if (!data.description?.includes(marker)) {
-        throw new Error(`GitHub repository ${owner}/${repositoryName} already exists and is not owned by this service.`);
-      }
-      return {
-        htmlUrl: data.html_url,
-        fullName: data.full_name,
-        ownerId: data.owner.id,
-        repositoryId: data.id,
-      };
-    }
+    const repositories = await withRetry(
+      () => octokit.paginate(octokit.apps.listReposAccessibleToInstallation, { per_page: 100 }),
+      'listAccessibleRepositories',
+    );
+    return repositories
+      .map((repository) => ({
+        id: repository.id,
+        name: repository.name,
+        fullName: repository.full_name,
+        htmlUrl: repository.html_url,
+        owner: repository.owner.login,
+      }))
+      .sort((left, right) => left.fullName.localeCompare(right.fullName));
   }
 
-  /** Archive the source repository after its infrastructure has been removed. */
-  async archiveRepository(repoUrl: string): Promise<void> {
+  /** Verify app access and return immutable repository identifiers for OIDC trust. */
+  async getRepositoryMetadata(repoUrl: string): Promise<{
+    htmlUrl: string;
+    fullName: string;
+    ownerId: number;
+    repositoryId: number;
+    hasAdminAccess: boolean;
+  }> {
     const parsed = this.parseRepoUrl(repoUrl);
-    if (!parsed) throw new Error(`Invalid GitHub repository URL: ${repoUrl}`);
+    if (!parsed) throw new Error('Enter a valid https://github.com/owner/repository URL.');
     const octokit = await this.requireOctokit();
-    await withRetry(
-      () => octokit.repos.update({ owner: parsed.owner, repo: parsed.repo, archived: true }),
-      'archiveRepository',
+    const { data } = await withRetry(
+      () => octokit.repos.get({ owner: parsed.owner, repo: parsed.repo }),
+      'getRepositoryMetadata',
     );
+    return {
+      htmlUrl: data.html_url,
+      fullName: data.full_name,
+      ownerId: data.owner.id,
+      repositoryId: data.id,
+      hasAdminAccess: data.permissions?.admin === true,
+    };
   }
 
   /** Dispatch the committed deploy workflow on the repository's main branch. */
@@ -205,15 +146,21 @@ export class GitHubIntegrator {
     );
   }
 
-  /**
-   * Parse GitHub owner and repo from repository URL.
-   * Supports: https://github.com/org/repo.git, git@github.com:org/repo.git
-   */
+  /** Parse an HTTPS GitHub owner/repository URL. */
   parseRepoUrl(repoUrl: string): { owner: string; repo: string } | null {
     try {
-      const match = repoUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)(?:\.git)?$/);
-      if (!match) return null;
-      return { owner: match[1], repo: match[2] };
+      const parsed = new URL(repoUrl);
+      if (
+        parsed.protocol !== 'https:'
+        || parsed.hostname !== 'github.com'
+        || parsed.username
+        || parsed.password
+        || parsed.search
+        || parsed.hash
+      ) return null;
+      const parts = parsed.pathname.replace(/\.git$/, '').split('/').filter(Boolean);
+      if (parts.length !== 2 || !parts.every((part) => /^[A-Za-z0-9_.-]+$/.test(part))) return null;
+      return { owner: parts[0], repo: parts[1] };
     } catch {
       return null;
     }

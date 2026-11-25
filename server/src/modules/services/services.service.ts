@@ -2,6 +2,8 @@ import { query } from '../../database/index.js';
 import { AppError } from '../../middleware/errorHandler.js';
 import { provisioningQueue } from '../../queue/index.js';
 import { logAction } from '../audit/audit.service.js';
+import { GitHubIntegrator } from '../cicd/github-client.js';
+import { estimateServiceCost } from '../cost/cost-estimator.js';
 import type { CreateServiceInput } from './services.schema.js';
 
 interface ServiceRow {
@@ -21,6 +23,11 @@ interface ServiceRow {
   requested_vcpu: number;
   requested_memory_gib: number;
   workload_profile: 'bursty' | 'balanced' | 'compute' | 'memory';
+  expected_duration_hours: number;
+  estimated_hourly_cost_usd?: string | null;
+  estimated_total_cost_usd?: string | null;
+  infrastructure_started_at: Date | null;
+  infrastructure_decommissioned_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -56,6 +63,15 @@ function formatService(s: ServiceRow) {
     requestedVcpu: Number(s.requested_vcpu ?? 0.5),
     requestedMemoryGiB: Number(s.requested_memory_gib ?? 1),
     workloadProfile: s.workload_profile ?? 'bursty',
+    expectedDurationHours: Number(s.expected_duration_hours ?? 24),
+    estimatedHourlyCostUsd: s.estimated_hourly_cost_usd === null || s.estimated_hourly_cost_usd === undefined
+      ? null
+      : Number(s.estimated_hourly_cost_usd),
+    estimatedTotalCostUsd: s.estimated_total_cost_usd === null || s.estimated_total_cost_usd === undefined
+      ? null
+      : Number(s.estimated_total_cost_usd),
+    infrastructureStartedAt: s.infrastructure_started_at,
+    infrastructureDecommissionedAt: s.infrastructure_decommissioned_at,
     createdAt: s.created_at,
     updatedAt: s.updated_at,
   };
@@ -84,6 +100,15 @@ export async function createService(
     throw new AppError(422, 'NO_TEAM', 'You must belong to a team to create a service');
   }
 
+  const repository = await new GitHubIntegrator().getRepositoryMetadata(input.repositoryUrl);
+  if (!repository.hasAdminAccess) {
+    throw new AppError(
+      422,
+      'GITHUB_ADMIN_ACCESS_REQUIRED',
+      'Install the SCAPE GitHub App on a repository where you have administrator access.',
+    );
+  }
+
   // Verify template exists
   const template = await query(
     'SELECT id, terraform_module_path, template_type FROM service_templates WHERE id = $1 AND is_active = true',
@@ -91,6 +116,22 @@ export async function createService(
   );
   if (!template.rowCount || template.rowCount === 0) {
     throw new AppError(404, 'TEMPLATE_NOT_FOUND', 'Service template not found or inactive');
+  }
+
+  let costEstimate;
+  try {
+    costEstimate = await estimateServiceCost({
+      region: input.region,
+      modulePath: template.rows[0].terraform_module_path,
+      computeMode,
+      ec2InstanceType: input.ec2InstanceType,
+      requestedVcpu,
+      requestedMemoryGiB,
+      expectedDurationHours: input.expectedDurationHours,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'AWS pricing data is unavailable.';
+    throw new AppError(503, 'COST_ESTIMATE_UNAVAILABLE', message);
   }
 
   // Check duplicate service name per team
@@ -106,8 +147,9 @@ export async function createService(
   const serviceResult = await query<ServiceRow>(
     `INSERT INTO services
        (name, owner_id, team_id, template_id, status, region, environment,
-        compute_mode, ec2_instance_type, requested_vcpu, requested_memory_gib, workload_profile)
-     VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, $8, $9, $10, $11)
+        compute_mode, ec2_instance_type, requested_vcpu, requested_memory_gib, workload_profile,
+        repository_url, expected_duration_hours, estimated_hourly_cost_usd, estimated_total_cost_usd)
+     VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING *`,
     [
       input.name,
@@ -121,6 +163,10 @@ export async function createService(
       requestedVcpu,
       requestedMemoryGiB,
       workloadProfile,
+      repository.htmlUrl,
+      input.expectedDurationHours,
+      costEstimate.hourlyEstimateUsd,
+      costEstimate.totalEstimateUsd,
     ],
   );
   const service = serviceResult.rows[0];
@@ -142,6 +188,7 @@ export async function createService(
     templateId: input.templateId,
     templateType: template.rows[0].template_type,
     terraformModulePath: template.rows[0].terraform_module_path,
+    repositoryUrl: repository.htmlUrl,
     region: input.region,
     environment: input.environment,
     computeMode,
@@ -149,6 +196,7 @@ export async function createService(
     requestedVcpu,
     requestedMemoryGiB,
     workloadProfile,
+    expectedDurationHours: input.expectedDurationHours,
     teamId,
     triggeredBy: userId,
   }, { jobId: job.id });
@@ -169,6 +217,9 @@ export async function createService(
       requestedVcpu,
       requestedMemoryGiB,
       workloadProfile,
+      repositoryUrl: repository.htmlUrl,
+      expectedDurationHours: input.expectedDurationHours,
+      estimateUsd: costEstimate.totalEstimateUsd,
     },
   });
 
@@ -209,6 +260,11 @@ export async function getAllServices(teamId: string, userRole: string) {
   }
 
   return result.rows.map(formatService);
+}
+
+/** Repositories exposed by the SCAPE GitHub App installation. */
+export async function getGitHubRepositories() {
+  return new GitHubIntegrator().listAccessibleRepositories();
 }
 
 /**
