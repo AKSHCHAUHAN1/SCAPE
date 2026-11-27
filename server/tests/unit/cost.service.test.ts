@@ -54,10 +54,34 @@ describe('Cost Service - Unit Tests', () => {
     }));
   });
 
-  it('aggregates AWS service groups into one idempotent per-service daily actual', async () => {
+  it('returns a clear 503 when AWS cannot provide a cost estimate', async () => {
+    vi.mocked(query).mockResolvedValueOnce({
+      rows: [{ terraform_module_path: 'terraform/modules/nodejs-api' }],
+      rowCount: 1, command: '', oid: 0, fields: [],
+    });
+    mockEstimateServiceCost.mockRejectedValueOnce(new Error(
+      'AWS denied access to the Pricing API. Re-apply the SCAPE foundation IAM policy so CostExplorerReadRole includes pricing:GetProducts, then retry.',
+    ));
+
+    await expect(estimateConfiguredServiceCost({
+      templateId: 'template-id',
+      region: 'ap-south-1',
+      computeMode: 'ec2',
+      ec2InstanceType: 't3.small',
+      requestedVcpu: 0.5,
+      requestedMemoryGiB: 1,
+      expectedDurationHours: 24,
+    })).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'COST_ESTIMATE_UNAVAILABLE',
+      message: expect.stringContaining('pricing:GetProducts'),
+    });
+  });
+
+  it('preserves exact AWS service-group amounts, including credits', async () => {
     mockFetchCostsByService.mockResolvedValueOnce([
-      { serviceId: 'service-1', amountUsd: 2, periodStart: '2026-11-24', periodEnd: '2026-11-25', resourceIds: ['Amazon EC2'] },
-      { serviceId: 'service-1', amountUsd: 3, periodStart: '2026-11-24', periodEnd: '2026-11-25', resourceIds: ['Amazon RDS'] },
+      { serviceId: 'service-1', amountUsd: 2, periodStart: '2026-11-24', periodEnd: '2026-11-25', awsService: 'Amazon EC2' },
+      { serviceId: 'service-1', amountUsd: -3, periodStart: '2026-11-24', periodEnd: '2026-11-25', awsService: 'Amazon RDS' },
     ]);
     vi.mocked(query).mockResolvedValueOnce({
       rows: [{
@@ -65,9 +89,13 @@ describe('Cost Service - Unit Tests', () => {
         service_id: 'service-1',
         period_start: '2026-11-24',
         period_end: '2026-11-25',
-        amount_usd: '5.0000',
+        amount_usd: '-1.0000',
         currency: 'USD',
         aws_resource_ids: ['Amazon EC2', 'Amazon RDS'],
+        aws_service_costs: [
+          { serviceName: 'Amazon EC2', amountUsd: 2 },
+          { serviceName: 'Amazon RDS', amountUsd: -3 },
+        ],
         synced_at: new Date(),
         created_at: new Date(),
       }],
@@ -76,17 +104,21 @@ describe('Cost Service - Unit Tests', () => {
 
     await expect(syncDailyCosts()).resolves.toBe(1);
     const upsertValues = vi.mocked(query).mock.calls[0][1] as unknown[];
-    expect(upsertValues[3]).toBe(5);
+    expect(upsertValues[3]).toBe(-1);
     expect(JSON.parse(String(upsertValues[5]))).toEqual(['Amazon EC2', 'Amazon RDS']);
+    expect(JSON.parse(String(upsertValues[6]))).toEqual([
+      { serviceName: 'Amazon EC2', amountUsd: 2 },
+      { serviceName: 'Amazon RDS', amountUsd: -3 },
+    ]);
   });
 
   describe('getCostsByServiceId()', () => {
-    it('should aggregate costs and resource breakdown', async () => {
+    it('should aggregate costs and exact AWS service breakdown', async () => {
       const mockQuery = vi.mocked(query);
 
       // 1. getServiceById check
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 'srv-1', team_id: 'team-1' }],
+        rows: [{ id: 'srv-1', owner_id: 'user-1' }],
         rowCount: 1, command: '', oid: 0, fields: []
       });
 
@@ -100,7 +132,11 @@ describe('Cost Service - Unit Tests', () => {
             period_end: '2026-09-02',
             amount_usd: '15.5000',
             currency: 'USD',
-            aws_resource_ids: ['ECS', 'RDS'],
+            aws_resource_ids: ['ECS', 'RDS', 'AWS service'],
+            aws_service_costs: [
+              { serviceName: 'ECS', amountUsd: 10 },
+              { serviceName: 'RDS', amountUsd: 5.5 },
+            ],
             synced_at: new Date(),
             created_at: new Date(),
           },
@@ -112,6 +148,7 @@ describe('Cost Service - Unit Tests', () => {
             amount_usd: '10.0000',
             currency: 'USD',
             aws_resource_ids: ['ECS'],
+            aws_service_costs: [{ serviceName: 'ECS', amountUsd: 10 }],
             synced_at: new Date(),
             created_at: new Date(),
           },
@@ -119,11 +156,73 @@ describe('Cost Service - Unit Tests', () => {
         rowCount: 2, command: '', oid: 0, fields: []
       });
 
-      const res = await getCostsByServiceId('srv-1', undefined, 'team-1', 'developer');
+      const res = await getCostsByServiceId('srv-1', undefined, 'user-1');
       expect(res.serviceId).toBe('srv-1');
       expect(res.totalUsd).toBe(25.5);
       expect(res.records).toHaveLength(2);
-      expect(res.resourceBreakdown.find((r) => r.resource === 'ECS')?.amountUsd).toBeGreaterThan(0);
+      expect(res.records[0].awsServices).toEqual(['ECS', 'RDS']);
+      expect(res.awsServiceBreakdown).toEqual([
+        { serviceName: 'ECS', amountUsd: 20 },
+        { serviceName: 'RDS', amountUsd: 5.5 },
+      ]);
+    });
+
+    it('returns null actual spend when AWS has not reported any records', async () => {
+      vi.mocked(query).mockResolvedValueOnce({
+        rows: [{ id: 'srv-1', owner_id: 'user-1', status: 'decommissioned' }],
+        rowCount: 1, command: '', oid: 0, fields: [],
+      }).mockResolvedValueOnce({
+        rows: [],
+        rowCount: 0, command: '', oid: 0, fields: [],
+      });
+
+      await expect(getCostsByServiceId('srv-1', undefined, 'user-1')).resolves.toMatchObject({
+        serviceStatus: 'decommissioned',
+        hasAwsData: false,
+        totalUsd: null,
+        awsServiceBreakdown: [],
+      });
+    });
+
+    it('returns missing AWS actuals as null rather than zero', async () => {
+      vi.mocked(query).mockResolvedValueOnce({
+        rows: [{ id: 'srv-1', name: 'Service', owner_id: 'user-1', status: 'active' }],
+        rowCount: 1, command: '', oid: 0, fields: [],
+      }).mockResolvedValueOnce({
+        rows: [],
+        rowCount: 0, command: '', oid: 0, fields: [],
+      });
+
+      await expect(getCostSummary('user-1')).resolves.toMatchObject({
+        hasAwsData: false,
+        totalCostUsd: null,
+        monthlyCostUsd: null,
+        servicesCosts: [{ totalUsd: null }],
+        monthlyTrend: [],
+      });
+    });
+
+    it('returns an empty summary when the account owns no services', async () => {
+      vi.mocked(query).mockResolvedValueOnce({
+        rows: [],
+        rowCount: 0,
+        command: '',
+        oid: 0,
+        fields: [],
+      });
+
+      await expect(getCostSummary('user-1')).resolves.toEqual({
+        hasAwsData: false,
+        totalCostUsd: null,
+        monthlyCostUsd: null,
+        servicesCount: 0,
+        servicesCosts: [],
+        monthlyTrend: [],
+      });
+      expect(query).toHaveBeenCalledWith(
+        'SELECT id, name, status FROM services WHERE owner_id = $1',
+        ['user-1'],
+      );
     });
   });
 
@@ -154,7 +253,7 @@ describe('Cost Service - Unit Tests', () => {
         periodEnd: '2026-09-02',
         amountUsd: 12.0,
         currency: 'USD',
-        awsResourceIds: ['S3'],
+        awsServices: ['S3'],
       });
 
       expect(rec.id).toBe('c-1');

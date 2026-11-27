@@ -13,6 +13,7 @@ data "aws_ssm_parameter" "ecs_ami" {
 }
 
 locals {
+  owner_id     = coalesce(var.owner_id, var.owner_team)
   service_slug = "${trim(substr(replace(lower(var.service_name), "/[^a-z0-9-]/", "-"), 0, 14), "-")}-${substr(replace(var.service_id, "-", ""), 0, 8)}"
   github_oidc_subject = var.github_owner_id == null || var.github_repository_id == null ? "repo:${var.github_repository}:ref:refs/heads/main" : format(
     "repo:%s@%s/%s@%s:ref:refs/heads/main",
@@ -23,7 +24,7 @@ locals {
   )
   tags = merge(var.tags, {
     "forge:service-id"  = var.service_id
-    "forge:team-id"     = var.owner_team
+    "forge:user-id"     = local.owner_id
     "forge:template-id" = lookup(var.tags, "forge:template-id", "nodejs-api")
     Environment         = var.environment
     ManagedBy           = "scape"
@@ -326,8 +327,8 @@ resource "aws_autoscaling_group" "ecs" {
     propagate_at_launch = true
   }
   tag {
-    key                 = "forge:team-id"
-    value               = var.owner_team
+    key                 = "forge:user-id"
+    value               = var.owner_id
     propagate_at_launch = true
   }
   tag {

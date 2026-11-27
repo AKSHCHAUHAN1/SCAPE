@@ -1,6 +1,5 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore.js';
 import {
   Activity,
   BarChart3,
@@ -8,7 +7,6 @@ import {
   CircleHelp,
   LayoutDashboard,
   Plus,
-  ShieldCheck,
   UserRound,
   X,
 } from 'lucide-react';
@@ -19,16 +17,12 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ mobileNavOpen = false, onNavigate }) => {
-  const { user } = useAuthStore();
-  const isAdmin = user?.role === 'admin';
-
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
     { to: '/services', label: 'Service Catalog', icon: Boxes, end: true },
     { to: '/services/new', label: 'Create Service', icon: Plus },
     { to: '/costs', label: 'Cost Dashboard', icon: BarChart3 },
-    ...(isAdmin ? [{ to: '/admin/audit', label: 'Audit Logs', icon: ShieldCheck }] : []),
-    { to: '/profile', label: 'Profile & Team', icon: UserRound },
+    { to: '/profile', label: 'Account', icon: UserRound },
   ];
 
   return (

@@ -8,7 +8,7 @@ export interface ServiceCostItem {
   amountUsd: number;
   periodStart: string;
   periodEnd: string;
-  resourceIds: string[];
+  awsService: string | null;
 }
 
 export class AwsCostExplorerClient {
@@ -79,16 +79,17 @@ export class AwsCostExplorerClient {
 
           for (const group of period.Groups || []) {
             const rawTag = group.Keys?.[0] || '';
-            const serviceTag = rawTag.split('$')[1] || '';
-            const amount = parseFloat(group.Metrics?.UnblendedCost?.Amount || '0');
+            const tagSeparator = rawTag.indexOf('$');
+            const serviceTag = tagSeparator === -1 ? '' : rawTag.slice(tagSeparator + 1);
+            const amount = Number(group.Metrics?.UnblendedCost?.Amount);
 
-            if (serviceTag && amount > 0) {
+            if (serviceTag && Number.isFinite(amount) && amount !== 0) {
               results.push({
                 serviceId: serviceTag,
                 amountUsd: amount,
                 periodStart: pStart,
                 periodEnd: pEnd,
-                resourceIds: [group.Keys?.[1] || 'AWS service'],
+                awsService: group.Keys?.[1] || null,
               });
             }
           }

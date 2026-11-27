@@ -7,7 +7,6 @@ import {
   Layers,
   LogOut,
   Menu,
-  Shield,
   Sparkles,
   Terminal,
   UserRound,
@@ -91,10 +90,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen =
               </span>
               <span className="hidden max-w-[150px] sm:block">
                 <span className="block truncate text-xs font-semibold leading-4 text-text">{user.email}</span>
-                <span className="flex items-center gap-1 text-[10px] capitalize leading-3 text-text-muted">
-                  <Shield className="h-2.5 w-2.5 text-secondary" />
-                  {user.role.replace('_', ' ')}
-                </span>
               </span>
               <ChevronDown className="hidden h-3.5 w-3.5 text-text-muted sm:block" />
             </button>
@@ -110,7 +105,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen =
                 <div className="absolute right-0 z-50 mt-2 w-60 rounded-2xl border border-border bg-white p-2 shadow-xl shadow-slate-900/10">
                   <div className="mb-1 border-b border-border px-3 py-2.5">
                     <p className="truncate text-xs font-semibold text-text">{user.email}</p>
-                    <p className="mt-0.5 text-[11px] capitalize text-text-muted">{user.role.replace('_', ' ')}</p>
                   </div>
                   <Link
                     to="/profile"
@@ -118,7 +112,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar, isSidebarOpen =
                     className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-xs font-medium text-text-secondary hover:bg-bg-secondary hover:text-text"
                   >
                     <UserRound className="h-4 w-4 text-text-muted" />
-                    My Profile & Team
+                    My Account
                   </Link>
                   <Link
                     to="/services"

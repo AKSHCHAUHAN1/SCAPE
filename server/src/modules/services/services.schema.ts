@@ -64,4 +64,17 @@ export const createServiceSchema = z.object({
   }
 });
 
+export const validateGitHubRepositorySchema = z.object({
+  repositoryUrl: z.string().url('Enter a valid GitHub repository URL.').refine((value) => {
+    try {
+      const repository = new URL(value);
+      return repository.protocol === 'https:'
+        && repository.hostname === 'github.com'
+        && repository.pathname.split('/').filter(Boolean).length === 2;
+    } catch {
+      return false;
+    }
+  }, 'Enter a repository URL hosted at https://github.com/owner/repository.'),
+});
+
 export type CreateServiceInput = z.infer<typeof createServiceSchema>;

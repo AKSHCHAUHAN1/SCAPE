@@ -33,11 +33,11 @@ export interface PlatformMetrics {
     deployments: {
       total: number;
       activeJobs: number;
-      successRate: number;
+      successRate: number | null;
       recentDeployments: RecentDeployment[];
     };
     cost: {
-      totalSpendUsd: number;
+      totalSpendUsd: number | null;
     };
     infrastructure: InfrastructureHealth;
   };

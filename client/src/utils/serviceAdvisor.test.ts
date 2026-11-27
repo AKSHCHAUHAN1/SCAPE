@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getRecommendedTemplateType, isSupportedEc2InstanceType, recommendEc2InstanceType } from './serviceAdvisor.js';
 
 describe('service advisor', () => {
-  it('recommends a small demo EC2 type for the default bursty workload', () => {
+  it('recommends an EC2 type for the default bursty workload', () => {
     expect(recommendEc2InstanceType(0.5, 1, 'bursty')?.type).toBe('t3.small');
   });
 

@@ -41,9 +41,9 @@ function formatJob(job: JobRow) {
 /**
  * Get all jobs for a specific service.
  */
-export async function getJobsByServiceId(serviceId: string, teamId: string, userRole: string) {
+export async function getJobsByServiceId(serviceId: string, ownerId: string) {
   // Check if user has access to this service
-  await getServiceById(serviceId, teamId, userRole);
+  await getServiceById(serviceId, ownerId);
 
   const result = await query<JobRow>(
     `SELECT * FROM provisioning_jobs WHERE service_id = $1 ORDER BY created_at DESC`,
@@ -56,7 +56,7 @@ export async function getJobsByServiceId(serviceId: string, teamId: string, user
 /**
  * Get a specific job by ID.
  */
-export async function getJobById(jobId: string, teamId: string, userRole: string) {
+export async function getJobById(jobId: string, ownerId: string) {
   const result = await query<JobRow>(
     `SELECT * FROM provisioning_jobs WHERE id = $1`,
     [jobId],
@@ -69,7 +69,7 @@ export async function getJobById(jobId: string, teamId: string, userRole: string
   const job = result.rows[0];
 
   // Verify access via service
-  await getServiceById(job.service_id, teamId, userRole);
+  await getServiceById(job.service_id, ownerId);
 
   return formatJob(job);
 }
@@ -77,15 +77,15 @@ export async function getJobById(jobId: string, teamId: string, userRole: string
 /**
  * Retry a failed job.
  */
-export async function retryJob(jobId: string, userId: string, teamId: string, userRole: string) {
-  const job = await getJobById(jobId, teamId, userRole);
+export async function retryJob(jobId: string, userId: string) {
+  const job = await getJobById(jobId, userId);
 
   if (job.status === 'queued' || job.status === 'running') {
     throw new AppError(409, 'JOB_NOT_FAILED', 'Only failed jobs can be retried');
   }
 
-  // Ensure service exists
-  const service = await getServiceById(job.serviceId, teamId, userRole);
+  // Resolve the service through the authenticated owner boundary.
+  const service = await getServiceById(job.serviceId, userId);
   
   // Get template path
   const templateResult = await query(
@@ -116,7 +116,7 @@ export async function retryJob(jobId: string, userId: string, teamId: string, us
     ec2InstanceType: service.ec2InstanceType ?? undefined,
     requestedVcpu: service.requestedVcpu ?? 1,
     requestedMemoryGiB: service.requestedMemoryGiB ?? 2,
-    teamId: service.teamId,
+    ownerId: userId,
     triggeredBy: userId,
   });
 

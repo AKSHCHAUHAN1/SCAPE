@@ -6,8 +6,6 @@ import { AppError } from './errorHandler.js';
 export interface AuthPayload {
   userId: string;
   email: string;
-  role: 'developer' | 'team_lead' | 'devops' | 'admin';
-  teamId: string;
   tokenUse: 'access';
 }
 
@@ -44,22 +42,4 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
   } catch {
     throw new AppError(401, 'UNAUTHORIZED', 'Invalid or expired token');
   }
-}
-
-/**
- * Role-based authorization middleware factory.
- * Restricts access to users with one of the specified roles.
- */
-export function authorize(...roles: AuthPayload['role'][]) {
-  return (req: Request, _res: Response, next: NextFunction): void => {
-    if (!req.user) {
-      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    }
-
-    if (!roles.includes(req.user.role)) {
-      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
-    }
-
-    next();
-  };
 }

@@ -42,8 +42,6 @@ describe('Navbar Component', () => {
     useAuthStore.getState().login('mock-jwt', {
       id: 'usr-1',
       email: 'alex@company.com',
-      role: 'devops',
-      teamId: 'team-infra',
     });
 
     render(
@@ -52,9 +50,9 @@ describe('Navbar Component', () => {
       </MemoryRouter>,
     );
 
-    // Verify user email and role badge
+    // Verify user identity without exposing a role badge.
     expect(screen.getByText('alex@company.com')).toBeInTheDocument();
-    expect(screen.getByText('devops')).toBeInTheDocument();
+    expect(screen.queryByText(/devops|admin|developer/i)).not.toBeInTheDocument();
 
     // Open user dropdown
     const userButton = screen.getByText('alex@company.com').closest('button');

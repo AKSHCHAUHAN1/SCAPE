@@ -17,8 +17,6 @@ describe('DashboardPage Component', () => {
     useAuthStore.getState().login('mock-jwt', {
       id: 'usr-1',
       email: 'engineer@scape.dev',
-      role: 'developer',
-      teamId: 'team-backend',
     });
   });
 
@@ -49,6 +47,87 @@ describe('DashboardPage Component', () => {
 
     expect(screen.getByText('Platform Dashboard')).toBeInTheDocument();
     expect(container.getElementsByClassName('animate-pulse').length).toBeGreaterThan(0);
+  });
+
+  it('does not present unavailable metrics as zero', () => {
+    vi.mocked(healthHooks.usePlatformMetrics).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch: vi.fn(),
+      dataUpdatedAt: 0,
+    } as any);
+    vi.mocked(costHooks.useCostSummary).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+    } as any);
+    vi.mocked(servicesHooks.useServices).mockReturnValue({
+      data: [],
+      isLoading: false,
+    } as any);
+
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent("Platform metrics couldn't be loaded");
+    expect(screen.getByText('Total Services').closest('div.relative')).toHaveTextContent(/Total Services[\s\S]*—/);
+    expect(screen.getByText('Deployments').closest('div.relative')).toHaveTextContent('Metrics unavailable');
+    expect(screen.queryByText('No deployment history')).not.toBeInTheDocument();
+  });
+
+  it('shows missing AWS cost records as unavailable instead of zero', () => {
+    vi.mocked(healthHooks.usePlatformMetrics).mockReturnValue({
+      data: {
+        status: 'healthy',
+        uptimeMs: 1000,
+        uptimeFormatted: '1s',
+        timestamp: new Date().toISOString(),
+        platform: {
+          services: { total: 0, active: 0, pending: 0, failed: 0 },
+          deployments: { total: 0, activeJobs: 0, successRate: null, recentDeployments: [] },
+          cost: { totalSpendUsd: null },
+          infrastructure: {
+            database: 'healthy',
+            api: 'healthy',
+            provisioningQueue: 'operational',
+            costSync: 'scheduled',
+          },
+        },
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+      dataUpdatedAt: Date.now(),
+    } as any);
+    vi.mocked(costHooks.useCostSummary).mockReturnValue({
+      data: {
+        hasAwsData: false,
+        totalCostUsd: null,
+        monthlyCostUsd: null,
+        servicesCount: 0,
+        servicesCosts: [],
+        monthlyTrend: [],
+      },
+      isLoading: false,
+      isError: false,
+    } as any);
+    vi.mocked(servicesHooks.useServices).mockReturnValue({
+      data: [],
+      isLoading: false,
+    } as any);
+
+    render(
+      <MemoryRouter>
+        <DashboardPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('No AWS cost records reported yet')).toBeInTheDocument();
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument();
   });
 
   it('renders KPI metrics and recent deployments when data is available', () => {

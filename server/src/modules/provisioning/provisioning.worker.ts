@@ -119,7 +119,7 @@ async function updateServiceStatus(
 // STS Credential Helper
 // ---------------------------------------------------------------------------
 
-async function assumeProvisioningRole(serviceId: string, teamId: string, region = config.aws.region) {
+async function assumeProvisioningRole(serviceId: string, ownerId: string, region = config.aws.region) {
   const stsClient = new STSClient({ region });
   const command = new AssumeRoleCommand({
     RoleArn: config.aws.provisioningRoleArn,
@@ -128,7 +128,8 @@ async function assumeProvisioningRole(serviceId: string, teamId: string, region 
     ExternalId: `scape-service-${serviceId}`,
     Tags: [
       { Key: 'forge:service-id', Value: serviceId },
-      { Key: 'forge:team-id', Value: teamId },
+      // Keep the legacy session tag key so existing foundation roles can still destroy services.
+      { Key: 'forge:team-id', Value: ownerId },
     ],
   });
 
@@ -157,7 +158,7 @@ async function processDecommissionJob(job: Job<ProvisioningJobData>) {
 
   try {
     const awsEnv: NodeJS.ProcessEnv = config.aws.provisioningRoleArn
-      ? (await assumeProvisioningRole(serviceId, job.data.teamId, region)) as unknown as NodeJS.ProcessEnv
+      ? (await assumeProvisioningRole(serviceId, job.data.ownerId, region)) as unknown as NodeJS.ProcessEnv
       : {};
     const runner = new TerraformRunner(`terraform/environments/${serviceId}`);
     const result = await runner.destroy(serviceId, awsEnv, {
@@ -213,7 +214,7 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
       ec2InstanceType,
       requestedVcpu = 1,
       requestedMemoryGiB = 2,
-      teamId,
+      ownerId,
       triggeredBy,
     } = job.data;
     const templateType = queuedTemplateType || (
@@ -234,14 +235,11 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
         throw new Error('A connected GitHub repository is required to provision this service.');
       }
       const sourceRepository = await github.getRepositoryMetadata(repositoryUrl);
-      if (!sourceRepository.hasAdminAccess) {
-        throw new Error('SCAPE needs administrator access to the selected GitHub repository to configure deployment.');
-      }
       await updateServiceStatus(serviceId, 'provisioning', sourceRepository.htmlUrl);
 
       // ── 1. Assume IAM Role ──
       const awsEnv: NodeJS.ProcessEnv = config.aws.provisioningRoleArn
-        ? (await assumeProvisioningRole(serviceId, teamId, region)) as unknown as NodeJS.ProcessEnv
+        ? (await assumeProvisioningRole(serviceId, ownerId, region)) as unknown as NodeJS.ProcessEnv
         : {};
 
       // ── 2. Generate per-service environment directory ──
@@ -256,13 +254,13 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
         ec2InstanceType,
         requestedVcpu,
         requestedMemoryGiB,
-        ownerTeam: teamId,
+        ownerId,
         githubRepository: sourceRepository.fullName,
         githubOwnerId: sourceRepository.ownerId,
         githubRepositoryId: sourceRepository.repositoryId,
         tags: {
           'forge:service-id': serviceId,
-          'forge:team-id': teamId,
+          'forge:user-id': ownerId,
           'forge:template-id': templateId,
           Environment: environment,
           ManagedBy: 'scape',
@@ -292,10 +290,10 @@ export async function processProvisioningJob(job: Job<ProvisioningJobData>) {
             requested_memory_gib: requestedMemoryGiB,
           }
           : {}),
-        owner_team: teamId,
+        owner_id: ownerId,
         tags: {
           'forge:service-id': serviceId,
-          'forge:team-id': teamId,
+          'forge:user-id': ownerId,
           'forge:template-id': templateId,
           Environment: environment,
           ManagedBy: 'scape',

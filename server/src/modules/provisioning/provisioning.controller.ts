@@ -8,8 +8,7 @@ export async function getJobsByServiceId(req: Request, res: Response, next: Next
   try {
     const jobs = await provisioningService.getJobsByServiceId(
       req.params.serviceId as string,
-      req.user!.teamId,
-      req.user!.role,
+      req.user!.userId,
     );
     res.json(jobs);
   } catch (err) {
@@ -24,8 +23,7 @@ export async function getJobById(req: Request, res: Response, next: NextFunction
   try {
     const job = await provisioningService.getJobById(
       req.params.id as string,
-      req.user!.teamId,
-      req.user!.role,
+      req.user!.userId,
     );
     res.json(job);
   } catch (err) {
@@ -41,8 +39,6 @@ export async function retryJob(req: Request, res: Response, next: NextFunction) 
     const job = await provisioningService.retryJob(
       req.params.id as string,
       req.user!.userId,
-      req.user!.teamId,
-      req.user!.role,
     );
     res.json(job);
   } catch (err) {

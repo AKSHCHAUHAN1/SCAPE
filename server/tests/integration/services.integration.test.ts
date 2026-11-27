@@ -10,8 +10,6 @@ describe('Services Endpoints - Integration Tests', () => {
     {
       userId: '11111111-1111-1111-1111-111111111111',
       email: 'dev@scape.dev',
-      role: 'developer',
-      teamId: '22222222-2222-2222-2222-222222222222',
       tokenUse: 'access',
     },
     config.jwt.privateKey,
@@ -34,7 +32,6 @@ describe('Services Endpoints - Integration Tests', () => {
           id: 'srv-1',
           name: 'payments-api',
           templateId: 'tmpl-1',
-          teamId: '22222222-2222-2222-2222-222222222222',
           ownerId: '11111111-1111-1111-1111-111111111111',
           status: 'active',
           region: 'us-east-1',
@@ -60,7 +57,6 @@ describe('Services Endpoints - Integration Tests', () => {
         id: 'srv-1',
         name: 'payments-api',
         templateId: 'tmpl-1',
-        teamId: '22222222-2222-2222-2222-222222222222',
         ownerId: '11111111-1111-1111-1111-111111111111',
         status: 'active',
         region: 'us-east-1',
@@ -93,17 +89,19 @@ describe('Services Endpoints - Integration Tests', () => {
 
     it('returns 202 with created service and triggers provisioning', async () => {
       vi.spyOn(servicesService, 'createService').mockResolvedValueOnce({
-        id: 'srv-new',
-        name: 'user-auth-service',
-        templateId: '33333333-3333-3333-3333-333333333333',
-        teamId: '22222222-2222-2222-2222-222222222222',
-        ownerId: '11111111-1111-1111-1111-111111111111',
-        status: 'pending',
-        region: 'us-east-1',
-        repositoryUrl: 'https://github.com/company/user-auth-service',
-        expectedDurationHours: 24,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        service: {
+          id: 'srv-new',
+          name: 'user-auth-service',
+          templateId: '33333333-3333-3333-3333-333333333333',
+          ownerId: '11111111-1111-1111-1111-111111111111',
+          status: 'pending',
+          region: 'us-east-1',
+          repositoryUrl: 'https://github.com/company/user-auth-service',
+          expectedDurationHours: 24,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        job: { id: 'job-1', status: 'queued', createdAt: new Date().toISOString() },
       } as any);
 
       const res = await request(app)
@@ -114,7 +112,6 @@ describe('Services Endpoints - Integration Tests', () => {
           templateId: '33333333-3333-3333-3333-333333333333',
           repositoryUrl: 'https://github.com/company/user-auth-service',
           expectedDurationHours: 24,
-          teamId: '22222222-2222-2222-2222-222222222222',
           region: 'us-east-1',
           config: {
             nodeVersion: '20',
@@ -123,8 +120,8 @@ describe('Services Endpoints - Integration Tests', () => {
         });
 
       expect(res.status).toBe(202);
-      expect(res.body).toHaveProperty('id', 'srv-new');
-      expect(res.body).toHaveProperty('status', 'pending');
+      expect(res.body.service).toHaveProperty('id', 'srv-new');
+      expect(res.body.service).toHaveProperty('status', 'pending');
     });
   });
 });

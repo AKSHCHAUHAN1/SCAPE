@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import axios from 'axios';
 import { Link, useParams } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore.js';
 import { Layout } from '../../components/layout/Layout.js';
 import { CostChart } from '../../components/data-display/CostChart.js';
 import { DataTable } from '../../components/data-display/DataTable.js';
@@ -23,14 +23,12 @@ type CostTableRow = CostRecord | {
   id: string;
   serviceId: string;
   serviceName: string;
-  totalUsd: number;
+  totalUsd: number | null;
 };
 
 export const CostDashboardPage: React.FC = () => {
   const { id: serviceId } = useParams<{ id: string }>();
   const isPerService = Boolean(serviceId);
-  const { user } = useAuthStore();
-  const canSync = user?.role === 'admin' || user?.role === 'devops';
   const [selectedPeriod, setSelectedPeriod] = useState('');
   const [syncStatus, setSyncStatus] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
@@ -61,20 +59,21 @@ export const CostDashboardPage: React.FC = () => {
   }, [records]);
 
   const monthlyTrend = isPerService ? serviceTrend : summary?.monthlyTrend ?? [];
-  const resourceBreakdown = isPerService ? serviceCost?.resourceBreakdown ?? [] : [];
-  const totalCost = isPerService ? serviceCost?.totalUsd : summary?.totalCostUsd;
+  const serviceBreakdown = isPerService ? serviceCost?.awsServiceBreakdown ?? [] : [];
+  const totalCost = isPerService ? serviceCost?.totalUsd ?? undefined : summary?.totalCostUsd ?? undefined;
   const currentMonth = new Date().toISOString().slice(0, 7);
   const previousMonthDate = new Date();
   previousMonthDate.setUTCMonth(previousMonthDate.getUTCMonth() - 1);
   const previousMonth = previousMonthDate.toISOString().slice(0, 7);
+  const currentMonthRecords = records.filter((record) => record.periodStart.startsWith(currentMonth));
   const currentMonthCost = isPerService
-    ? records.filter((record) => record.periodStart.startsWith(currentMonth)).reduce((sum, record) => sum + record.amountUsd, 0)
-    : summary?.monthlyCostUsd;
+    ? currentMonthRecords.length ? currentMonthRecords.reduce((sum, record) => sum + record.amountUsd, 0) : undefined
+    : summary?.monthlyCostUsd ?? undefined;
   const previousMonthCost = monthlyTrend.find((item) => item.month === previousMonth)?.amountUsd;
   const costDelta = currentMonthCost !== undefined && previousMonthCost !== undefined
     ? currentMonthCost - previousMonthCost
     : undefined;
-  const costDeltaPct = previousMonthCost && costDelta !== undefined
+  const costDeltaPct = previousMonthCost !== undefined && previousMonthCost !== 0 && costDelta !== undefined
     ? (costDelta / previousMonthCost) * 100
     : undefined;
   const daysElapsed = new Date().getUTCDate();
@@ -91,6 +90,8 @@ export const CostDashboardPage: React.FC = () => {
 
   const isLoading = isPerService ? serviceLoading : summaryLoading;
   const loadError = isPerService ? serviceError : summaryError;
+  const apiError = axios.isAxiosError(loadError) ? loadError : undefined;
+  const correlationId = apiError?.response?.headers['x-correlation-id'];
 
   const handleSync = async () => {
     setSyncStatus(null);
@@ -131,7 +132,7 @@ export const CostDashboardPage: React.FC = () => {
                   {isPerService ? 'Service cost insights' : 'Cloud cost dashboard'}
                 </h1>
                 <p className="mt-0.5 text-sm text-text-secondary">
-                  AWS reported spend, grouped by billing day and service.
+                  AWS Cost Explorer spend tagged to SCAPE services, grouped by billing day and AWS service.
                 </p>
               </div>
             </div>
@@ -160,8 +161,7 @@ export const CostDashboardPage: React.FC = () => {
                 )}
               </label>
             )}
-            {canSync && (
-              <button
+            <button
                 type="button"
                 onClick={handleSync}
                 disabled={triggerSync.isPending}
@@ -169,8 +169,7 @@ export const CostDashboardPage: React.FC = () => {
               >
                 <RotateCw className={`h-3.5 w-3.5 ${triggerSync.isPending ? 'animate-spin' : ''}`} />
                 {triggerSync.isPending ? 'Syncing costs…' : 'Sync AWS costs'}
-              </button>
-            )}
+            </button>
           </div>
         </div>
 
@@ -186,19 +185,10 @@ export const CostDashboardPage: React.FC = () => {
         )}
 
         {isPerService && serviceCost && (
-          <section className="grid gap-3 rounded-2xl border border-border bg-white p-4 shadow-sm sm:grid-cols-3 sm:p-5" aria-label="Service estimate and runtime">
+          <section className="grid gap-3 rounded-2xl border border-border bg-white p-4 shadow-sm sm:grid-cols-2 sm:p-5" aria-label="Service runtime and actual spend">
             <div>
               <p className="text-xs font-medium text-text-secondary">Planned duration</p>
               <p className="mt-1 text-lg font-bold text-text">{serviceCost.expectedDurationHours} hours</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-text-secondary">Infrastructure estimate</p>
-              <p className="mt-1 text-lg font-bold text-text">
-                {serviceCost.estimatedTotalCostUsd === null
-                  ? 'Usage-based'
-                  : `$${serviceCost.estimatedTotalCostUsd.toFixed(2)} USD`}
-              </p>
-              <p className="mt-1 text-[11px] text-text-muted">Estimate only; AWS-reported spend is shown separately.</p>
             </div>
             <div>
               <p className="text-xs font-medium text-text-secondary">Actual infrastructure runtime</p>
@@ -206,18 +196,48 @@ export const CostDashboardPage: React.FC = () => {
                 {serviceCost.actualRuntimeHours === null ? 'Not started' : `${serviceCost.actualRuntimeHours} hours`}
               </p>
               <p className="mt-1 text-[11px] text-text-muted">
-                AWS actual spend so far: ${serviceCost.totalUsd.toFixed(2)} USD
+                AWS actual spend so far: {serviceCost.totalUsd === null ? 'Not reported yet' : `$${serviceCost.totalUsd.toFixed(2)} USD`}
               </p>
             </div>
+            <p className="text-[11px] text-text-muted sm:col-span-2">
+              AWS may report or adjust tagged usage after decommissioning. SCAPE refreshes cost history daily; the amount shown is AWS-reported spend, not a quote.
+            </p>
           </section>
         )}
 
         {loadError && (
-          <div className="flex items-start gap-3 rounded-2xl border border-danger/20 bg-danger/5 p-4 text-sm text-danger" role="alert">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            Cost data could not be loaded. Refresh the page or check your access to this service.
+          <div className="flex items-start justify-between gap-3 rounded-2xl border border-border bg-bg-secondary/70 p-4 text-sm text-text-secondary" role="alert">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                {apiError?.response
+                  ? `SCAPE API returned HTTP ${apiError.response.status} while loading stored AWS cost records.`
+                  : 'SCAPE API did not return stored AWS cost records.'}
+                {' '}This does not indicate whether an AWS Cost Explorer sync succeeded.
+                {typeof correlationId === 'string' && ` Reference: ${correlationId}`}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => isPerService ? refetchService() : refetchSummary()}
+              className="shrink-0 font-semibold text-primary hover:underline"
+            >
+              Retry
+            </button>
           </div>
         )}
+
+        {!loadError && !isLoading &&
+          (isPerService ? serviceCost?.hasAwsData : summary?.hasAwsData) === false && (
+            <div className="rounded-2xl border border-border bg-bg-secondary/70 p-4 text-sm text-text-secondary" role="status">
+              {selectedPeriod
+                ? `No AWS Cost Explorer records are available for ${selectedPeriod}.`
+                : isPerService && serviceCost?.serviceStatus === 'decommissioned'
+                  ? 'This service is decommissioned. AWS Cost Explorer has not reported tagged spend yet; SCAPE will update the saved history when the daily sync receives it.'
+                  : 'No AWS Cost Explorer records are available yet.'}
+              {' '}No estimate or zero-cost value is substituted.
+            </div>
+          )}
 
         {selectedPeriod && (
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary">
@@ -230,14 +250,14 @@ export const CostDashboardPage: React.FC = () => {
           <MetricCard
             label={isPerService ? 'Tracked service spend' : 'Total tracked spend'}
             value={totalCost}
-            note="AWS reported · USD"
+            note={totalCost === undefined ? 'No AWS cost records · USD' : 'AWS Cost Explorer · USD'}
             icon={<DollarSign className="h-4 w-4" />}
             loading={isLoading}
           />
           <MetricCard
             label="Current month"
             value={currentMonthCost}
-            note="Month to date · USD"
+            note={currentMonthCost === undefined ? 'No current-month AWS records' : 'Month to date · AWS Cost Explorer'}
             icon={<Calendar className="h-4 w-4" />}
             loading={isLoading}
           />
@@ -260,7 +280,7 @@ export const CostDashboardPage: React.FC = () => {
 
         <CostChart
           monthlyTrend={monthlyTrend}
-          resourceBreakdown={resourceBreakdown}
+          serviceBreakdown={serviceBreakdown}
           currency="USD"
         />
 
@@ -282,9 +302,9 @@ export const CostDashboardPage: React.FC = () => {
             keyExtractor={(row) => row.id}
             isLoading={isLoading}
             emptyTitle="No cost records yet"
-            emptyDescription="Cost data will appear after AWS Cost Explorer returns tagged usage for this billing period."
-            searchPlaceholder="Search service or AWS resource…"
-            searchFields={isPerService ? ['periodStart', 'periodEnd', 'awsResourceIds'] : ['serviceName', 'serviceId']}
+            emptyDescription="Cost data will appear after AWS Cost Explorer returns usage tagged to a SCAPE service."
+            searchPlaceholder="Search service or AWS service group…"
+            searchFields={isPerService ? ['periodStart', 'periodEnd', 'awsServices'] : ['serviceName', 'serviceId']}
             columns={isPerService ? [
               {
                 key: 'periodStart',
@@ -302,11 +322,11 @@ export const CostDashboardPage: React.FC = () => {
                 render: (row) => <span className="font-semibold text-text">${(row as CostRecord).amountUsd.toFixed(4)} USD</span>,
               },
               {
-                key: 'awsResourceIds',
+                key: 'awsServices',
                 header: 'AWS service groups',
                 render: (row) => (
                   <span className="text-xs text-text-secondary">
-                    {(row as CostRecord).awsResourceIds.length ? (row as CostRecord).awsResourceIds.join(', ') : 'Unclassified'}
+                    {(row as CostRecord).awsServices.length ? (row as CostRecord).awsServices.join(', ') : 'Not available'}
                   </span>
                 ),
               },
@@ -326,7 +346,10 @@ export const CostDashboardPage: React.FC = () => {
                 key: 'totalUsd',
                 header: 'Tracked spend',
                 sortable: true,
-                render: (row) => <span className="font-semibold text-text">${(row as Extract<CostTableRow, { totalUsd: number }>).totalUsd.toFixed(2)} USD</span>,
+                render: (row) => {
+                  const amount = (row as Extract<CostTableRow, { totalUsd: number | null }>).totalUsd;
+                  return <span className="font-semibold text-text">{amount === null ? '—' : `$${amount.toFixed(2)} USD`}</span>;
+                },
               },
             ]}
           />

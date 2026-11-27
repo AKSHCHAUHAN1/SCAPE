@@ -4,8 +4,6 @@ import { AppError } from '../../middleware/errorHandler.js';
 interface UserRow {
   id: string;
   email: string;
-  role: string;
-  team_id: string | null;
   created_at: Date;
   updated_at: Date;
   last_login_at: Date | null;
@@ -16,7 +14,7 @@ interface UserRow {
  */
 export async function getUserById(userId: string) {
   const result = await query<UserRow>(
-    `SELECT id, email, role, team_id, created_at, updated_at, last_login_at
+    `SELECT id, email, created_at, updated_at, last_login_at
      FROM users WHERE id = $1`,
     [userId],
   );
@@ -29,8 +27,6 @@ export async function getUserById(userId: string) {
   return {
     id: user.id,
     email: user.email,
-    role: user.role,
-    teamId: user.team_id,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
     lastLoginAt: user.last_login_at,
@@ -59,7 +55,7 @@ export async function updateUser(userId: string, data: { email?: string }) {
 
   const result = await query<UserRow>(
     `UPDATE users SET ${fields.join(', ')} WHERE id = $${paramIdx}
-     RETURNING id, email, role, team_id, created_at, updated_at, last_login_at`,
+     RETURNING id, email, created_at, updated_at, last_login_at`,
     values,
   );
 
@@ -71,8 +67,6 @@ export async function updateUser(userId: string, data: { email?: string }) {
   return {
     id: user.id,
     email: user.email,
-    role: user.role,
-    teamId: user.team_id,
     createdAt: user.created_at,
     updatedAt: user.updated_at,
     lastLoginAt: user.last_login_at,

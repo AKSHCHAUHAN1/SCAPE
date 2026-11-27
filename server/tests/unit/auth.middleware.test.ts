@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
-import { authenticate, authorize } from '../../src/middleware/auth.js';
+import { authenticate } from '../../src/middleware/auth.js';
 import { config } from '../../src/config/index.js';
 import { AppError } from '../../src/middleware/errorHandler.js';
 
@@ -39,8 +39,6 @@ describe('Auth Middleware - Unit Tests', () => {
       const payload = {
         userId: 'test-user-id',
         email: 'user@scape.io',
-        role: 'developer' as const,
-        teamId: 'team-1',
         tokenUse: 'access' as const,
       };
       const token = jwt.sign(payload, config.jwt.privateKey, { algorithm: 'RS256', expiresIn: '1h' });
@@ -57,49 +55,9 @@ describe('Auth Middleware - Unit Tests', () => {
       expect(req.user).toMatchObject({
         userId: 'test-user-id',
         email: 'user@scape.io',
-        role: 'developer',
       });
-    });
-  });
-
-  describe('authorize()', () => {
-    it('should throw AppError 401 if req.user is undefined', () => {
-      const req = {} as Request;
-      const res = {} as Response;
-      const next = vi.fn() as NextFunction;
-
-      const middleware = authorize('admin', 'devops');
-      expect(() => middleware(req, res, next)).toThrow(AppError);
-      expect(() => middleware(req, res, next)).toThrowError(
-        expect.objectContaining({ statusCode: 401 }),
-      );
-    });
-
-    it('should throw AppError 403 if user role is not permitted', () => {
-      const req = {
-        user: { userId: '1', email: 'dev@scape.io', role: 'developer', teamId: 't1' },
-      } as unknown as Request;
-      const res = {} as Response;
-      const next = vi.fn() as NextFunction;
-
-      const middleware = authorize('admin', 'devops');
-      expect(() => middleware(req, res, next)).toThrow(AppError);
-      expect(() => middleware(req, res, next)).toThrowError(
-        expect.objectContaining({ statusCode: 403, code: 'FORBIDDEN' }),
-      );
-    });
-
-    it('should call next() if user role is permitted', () => {
-      const req = {
-        user: { userId: '1', email: 'lead@scape.io', role: 'team_lead', teamId: 't1' },
-      } as unknown as Request;
-      const res = {} as Response;
-      const next = vi.fn() as NextFunction;
-
-      const middleware = authorize('developer', 'team_lead');
-      middleware(req, res, next);
-
-      expect(next).toHaveBeenCalledTimes(1);
+      expect(req.user).not.toHaveProperty('role');
+      expect(req.user).not.toHaveProperty('teamId');
     });
   });
 });

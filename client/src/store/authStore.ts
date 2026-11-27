@@ -1,11 +1,5 @@
 import { create } from 'zustand';
-
-interface User {
-  id: string;
-  email: string;
-  role: 'developer' | 'team_lead' | 'devops' | 'admin';
-  teamId: string | null;
-}
+import type { User } from '../types/index.js';
 
 interface AuthState {
   accessToken: string | null;

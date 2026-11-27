@@ -8,7 +8,6 @@ const ServicesPage = lazy(() => import('./pages/Services/index.js'));
 const CreateServicePage = lazy(() => import('./pages/CreateService/index.js'));
 const ServiceDetailPage = lazy(() => import('./pages/ServiceDetail/index.js'));
 const CostDashboardPage = lazy(() => import('./pages/CostDashboard/index.js'));
-const AuditLogPage = lazy(() => import('./pages/AuditLog/index.js'));
 const ProfilePage = lazy(() => import('./pages/Profile/index.js'));
 
 function RouteLoading() {
@@ -39,7 +38,6 @@ function App() {
         <Route path="/services/:id" element={<ServiceDetailPage />} />
         <Route path="/services/:id/costs" element={<CostDashboardPage />} />
         <Route path="/costs" element={<CostDashboardPage />} />
-        <Route path="/admin/audit" element={<AuditLogPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

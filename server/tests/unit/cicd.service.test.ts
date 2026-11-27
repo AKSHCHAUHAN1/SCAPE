@@ -2,18 +2,20 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderWorkflowYaml } from '../../src/modules/cicd/workflow-renderer.js';
 import { GitHubIntegrator } from '../../src/modules/cicd/github-client.js';
 
-const { mockGetRepository, mockListRepositories } = vi.hoisted(() => ({
-  mockGetRepository: vi.fn(),
-  mockListRepositories: vi.fn(),
-}));
+const {
+  mockGetRepository,
+  mockCreateAuthenticatedOctokit,
+} = vi.hoisted(() => {
+  const mockGetRepository = vi.fn();
+  const mockCreateAuthenticatedOctokit = vi.fn(() => Promise.resolve({
+    repos: { get: mockGetRepository },
+  }));
+  return { mockGetRepository, mockCreateAuthenticatedOctokit };
+});
 
 vi.mock('../../src/modules/cicd/github-app-auth.js', () => ({
-  createAuthenticatedOctokit: vi.fn(() => Promise.resolve({
-    repos: { get: mockGetRepository },
-    apps: { listReposAccessibleToInstallation: mockListRepositories },
-    paginate: vi.fn((operation: () => Promise<{ data: { repositories: unknown[] } }>) =>
-      operation().then((response) => response.data.repositories)),
-  })),
+  createAuthenticatedOctokit: mockCreateAuthenticatedOctokit,
+  GitHubInstallationNotFoundError: class GitHubInstallationNotFoundError extends Error {},
 }));
 
 describe('CI/CD Integration - Unit Tests', () => {
@@ -64,37 +66,14 @@ describe('CI/CD Integration - Unit Tests', () => {
   });
 
   describe('GitHubIntegrator repository access', () => {
-    it('lists repositories available to the installation', async () => {
-      mockListRepositories.mockResolvedValueOnce({
-        data: {
-          repositories: [{
-            id: 2,
-            name: 'myservice',
-            full_name: 'myorg/myservice',
-            html_url: 'https://github.com/myorg/myservice',
-            owner: { login: 'myorg' },
-          }],
-        },
-      });
-      const gh = new GitHubIntegrator();
-
-      await expect(gh.listAccessibleRepositories()).resolves.toEqual([{
-        id: 2,
-        name: 'myservice',
-        fullName: 'myorg/myservice',
-        htmlUrl: 'https://github.com/myorg/myservice',
-        owner: 'myorg',
-      }]);
-    });
-
-    it('returns immutable repository identifiers and administrator access', async () => {
+    it('returns immutable repository identifiers without requiring the installation token to be an admin user', async () => {
       mockGetRepository.mockResolvedValueOnce({
         data: {
           html_url: 'https://github.com/myorg/myservice',
           full_name: 'myorg/myservice',
           id: 2,
           owner: { id: 1 },
-          permissions: { admin: true },
+          permissions: { admin: false },
         },
       });
       const gh = new GitHubIntegrator();
@@ -104,8 +83,8 @@ describe('CI/CD Integration - Unit Tests', () => {
         fullName: 'myorg/myservice',
         ownerId: 1,
         repositoryId: 2,
-        hasAdminAccess: true,
       });
+      expect(mockCreateAuthenticatedOctokit).toHaveBeenCalledWith('myorg');
     });
   });
 });

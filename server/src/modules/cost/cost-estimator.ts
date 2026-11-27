@@ -5,6 +5,7 @@ import {
 } from '@aws-sdk/client-pricing';
 import { STSClient, AssumeRoleCommand } from '@aws-sdk/client-sts';
 import { config } from '../../config/index.js';
+import { logger } from '../../utils/logger.js';
 
 interface PricingProduct {
   product?: {
@@ -47,6 +48,23 @@ export interface ServiceCostEstimate {
 let pricingClientPromise: Promise<PricingClient> | undefined;
 const productCache = new Map<string, { expiresAt: number; products: PricingProduct[] }>();
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+
+export function getPricingEstimateFailureMessage(error: unknown): string {
+  const pricingError = error as { name?: unknown; message?: unknown } | null;
+  const errorName = typeof pricingError?.name === 'string' ? pricingError.name : '';
+  const errorMessage = typeof pricingError?.message === 'string' ? pricingError.message : '';
+
+  if (errorName === 'AccessDeniedException' || errorName === 'AccessDenied') {
+    return 'AWS denied access to the Pricing API. Re-apply the SCAPE foundation IAM policy so CostExplorerReadRole includes pricing:GetProducts, then retry.';
+  }
+  if (
+    errorMessage.startsWith('AWS Price List returned no ')
+    || errorMessage === 'AWS Price List did not contain a matching hourly on-demand rate.'
+  ) {
+    return errorMessage;
+  }
+  return 'Could not retrieve current AWS Pricing data. Check the configured AWS cost role and Pricing API access, then retry.';
+}
 
 async function getPricingClient(): Promise<PricingClient> {
   if (!pricingClientPromise) {
@@ -223,17 +241,23 @@ export async function estimateServiceCost(input: ServiceCostEstimateInput): Prom
     throw new Error('A cost estimate is not available for this infrastructure template.');
   }
 
-  const prices = await Promise.all([
-    input.computeMode === 'ec2'
-      ? getEc2Rate(input.region, input.ec2InstanceType ?? 't3.small')
-      : Promise.all([
-          getFargateRate(input.region, 'vCPU'),
-          getFargateRate(input.region, 'GB'),
-        ]).then(([vcpuRate, memoryRate]) =>
-          vcpuRate * input.requestedVcpu + memoryRate * input.requestedMemoryGiB),
-    getRdsRate(input.region),
-    getApplicationLoadBalancerRate(input.region),
-  ]);
+  let prices: number[];
+  try {
+    prices = await Promise.all([
+      input.computeMode === 'ec2'
+        ? getEc2Rate(input.region, input.ec2InstanceType ?? 't3.small')
+        : Promise.all([
+            getFargateRate(input.region, 'vCPU'),
+            getFargateRate(input.region, 'GB'),
+          ]).then(([vcpuRate, memoryRate]) =>
+            vcpuRate * input.requestedVcpu + memoryRate * input.requestedMemoryGiB),
+      getRdsRate(input.region),
+      getApplicationLoadBalancerRate(input.region),
+    ]);
+  } catch (error) {
+    logger.error({ err: error, region: input.region, computeMode: input.computeMode }, 'AWS Pricing estimate failed');
+    throw new Error(getPricingEstimateFailureMessage(error));
+  }
   const hourlyEstimateUsd = prices.reduce((sum, price) => sum + price, 0);
 
   return {

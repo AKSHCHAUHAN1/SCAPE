@@ -5,8 +5,6 @@
 
 // ---- Enums ----
 
-export type UserRole = 'developer' | 'team_lead' | 'devops' | 'admin';
-
 export type ServiceStatus =
   | 'pending'
   | 'provisioning'
@@ -34,18 +32,9 @@ export type DeploymentStatus =
 export interface User {
   id: string;
   email: string;
-  role: UserRole;
-  teamId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  lastLoginAt: string | null;
-}
-
-export interface Team {
-  id: string;
-  name: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+  lastLoginAt?: string | null;
 }
 
 export interface ServiceTemplate {
@@ -63,7 +52,6 @@ export interface Service {
   id: string;
   name: string;
   ownerId: string;
-  teamId: string;
   templateId: string;
   templateName?: string | null;
   status: ServiceStatus;
@@ -77,8 +65,6 @@ export interface Service {
   requestedMemoryGiB?: number;
   workloadProfile?: 'bursty' | 'balanced' | 'compute' | 'memory';
   expectedDurationHours?: number;
-  estimatedHourlyCostUsd?: number | null;
-  estimatedTotalCostUsd?: number | null;
   infrastructureStartedAt?: string | null;
   infrastructureDecommissionedAt?: string | null;
   createdAt: string;
@@ -128,19 +114,12 @@ export interface CostRecord {
   periodEnd: string;
   amountUsd: number;
   currency: string;
-  awsResourceIds: string[];
+  awsServices: string[];
+  awsServiceCosts: {
+    serviceName: string;
+    amountUsd: number;
+  }[];
   syncedAt: string;
-  createdAt: string;
-}
-
-export interface AuditLog {
-  id: string;
-  actorId: string;
-  action: string;
-  resourceType: string;
-  resourceId: string;
-  payload: Record<string, unknown>;
-  ipAddress: string;
   createdAt: string;
 }
 
@@ -178,14 +157,6 @@ export interface CreateServiceInput {
   workloadProfile?: 'bursty' | 'balanced' | 'compute' | 'memory';
 }
 
-export interface GitHubRepository {
-  id: number;
-  name: string;
-  fullName: string;
-  htmlUrl: string;
-  owner: string;
-}
-
 export interface CreateServiceResponse {
   service: Service;
   job: {
@@ -197,14 +168,14 @@ export interface CreateServiceResponse {
 
 export interface ServiceCostResponse {
   serviceId: string;
-  totalUsd: number;
+  serviceStatus: ServiceStatus;
+  hasAwsData: boolean;
+  totalUsd: number | null;
   expectedDurationHours: number;
-  estimatedHourlyCostUsd: number | null;
-  estimatedTotalCostUsd: number | null;
   actualRuntimeHours: number | null;
   records: CostRecord[];
-  resourceBreakdown: {
-    resource: string;
+  awsServiceBreakdown: {
+    serviceName: string;
     amountUsd: number;
   }[];
 }
@@ -232,13 +203,14 @@ export interface ServiceCostEstimate {
 }
 
 export interface CostSummary {
-  totalCostUsd: number;
-  monthlyCostUsd: number;
+  hasAwsData: boolean;
+  totalCostUsd: number | null;
+  monthlyCostUsd: number | null;
   servicesCount: number;
   servicesCosts: {
     serviceId: string;
     serviceName: string;
-    totalUsd: number;
+    totalUsd: number | null;
   }[];
   monthlyTrend: {
     month: string;

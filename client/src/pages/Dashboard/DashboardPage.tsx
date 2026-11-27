@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout.js';
 import { StatusBadge } from '../../components/ui/StatusBadge.js';
@@ -104,17 +104,14 @@ function InfraStatusRow({
 
 /* ─── Main Component ──────────────────────────────────────────── */
 export const DashboardPage: React.FC = () => {
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
-
-  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics } = usePlatformMetrics();
-  const { data: costSummary, isLoading: costLoading } = useCostSummary();
+  const { data: metrics, isLoading: metricsLoading, isError: metricsError, refetch: refetchMetrics } = usePlatformMetrics();
+  const { data: costSummary, isLoading: costLoading, isError: costError } = useCostSummary();
   const { data: services = [], isLoading: servicesLoading } = useServices();
 
   const isLoading = metricsLoading || costLoading || servicesLoading;
 
   const handleRefresh = () => {
     refetchMetrics();
-    setLastRefresh(new Date());
   };
 
   const platform = metrics?.platform;
@@ -124,9 +121,16 @@ export const DashboardPage: React.FC = () => {
   const trend = costSummary?.monthlyTrend ?? [];
   const prevMonthCost = trend.length >= 2 ? trend[trend.length - 2].amountUsd : null;
   const curMonthCost = costSummary?.monthlyCostUsd;
-  const costDelta = prevMonthCost !== null && curMonthCost !== undefined ? curMonthCost - prevMonthCost : null;
+  const costServices = (costSummary?.servicesCosts ?? []).filter(
+    (service): service is { serviceId: string; serviceName: string; totalUsd: number } =>
+      service.totalUsd !== null,
+  );
+  const accumulatedCost = platform?.cost.totalSpendUsd ?? costSummary?.totalCostUsd;
+  const costDelta = prevMonthCost !== null && curMonthCost != null ? curMonthCost - prevMonthCost : null;
   const costDeltaPct =
-    prevMonthCost && prevMonthCost > 0 ? ((costDelta! / prevMonthCost) * 100).toFixed(1) : null;
+    prevMonthCost !== null && prevMonthCost !== 0 && costDelta !== null
+      ? ((costDelta / prevMonthCost) * 100).toFixed(1)
+      : null;
 
   // Recent deployments from metrics
   const recentDeployments = platform?.deployments.recentDeployments ?? [];
@@ -149,17 +153,15 @@ export const DashboardPage: React.FC = () => {
                   Platform Dashboard
                 </h1>
                 <p className="text-xs text-text-secondary">
-                  Real-time health monitoring, deployment tracking &amp; cost analytics
+                  Platform health, deployment activity, and AWS-reported costs
                 </p>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Live indicator */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/25 rounded-xl">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[11px] font-semibold text-emerald-400">LIVE</span>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-bg-secondary border border-border rounded-xl">
+              <span className="text-[11px] font-medium text-text-secondary">Health metrics refresh every 15 seconds</span>
             </div>
 
             <button
@@ -175,8 +177,19 @@ export const DashboardPage: React.FC = () => {
           </div>
         </div>
 
+        {metricsError && (
+          <div className="rounded-xl border border-border bg-bg-secondary/70 p-3 text-sm text-text-secondary" role="alert">
+            Platform metrics couldn't be loaded. Refresh to try again.
+          </div>
+        )}
+        {costError && (
+          <div className="rounded-xl border border-border bg-bg-secondary/70 p-3 text-sm text-text-secondary" role="alert">
+            AWS-reported cost data couldn't be loaded. No estimate or zero-cost value is substituted.
+          </div>
+        )}
+
         {/* Platform status banner */}
-        {!isLoading && (
+        {!isLoading && metrics && (
           <div
             className={`px-4 py-3 rounded-2xl border flex items-center gap-3 ${
               metrics?.status === 'healthy'
@@ -196,8 +209,8 @@ export const DashboardPage: React.FC = () => {
                   : 'Platform degraded — check infrastructure health'}
               </span>
               <span className="text-[11px] text-text-muted ml-3">
-                Uptime: {metrics?.uptimeFormatted ?? '—'} &nbsp;|&nbsp; Last checked:{' '}
-                {lastRefresh.toLocaleTimeString()}
+                API uptime: {metrics?.uptimeFormatted ?? '—'} &nbsp;|&nbsp; Last checked:{' '}
+                {metrics?.timestamp ? new Date(metrics.timestamp).toLocaleTimeString() : '—'}
               </span>
             </div>
             <span className="text-[11px] font-mono text-text-muted hidden md:block">
@@ -217,26 +230,34 @@ export const DashboardPage: React.FC = () => {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <MetricCard
               label="Total Services"
-              value={platform?.services.total ?? 0}
-              sub={`${platform?.services.active ?? 0} active`}
+              value={platform?.services.total ?? '—'}
+              sub={platform ? `${platform.services.active} active` : undefined}
               icon={Server}
               accentClass="text-primary"
             />
             <MetricCard
               label="Deployments"
-              value={platform?.deployments.total ?? 0}
-              sub={platform?.deployments.successRate != null ? `${platform.deployments.successRate}% success rate` : 'No deployment history'}
+              value={platform?.deployments.total ?? '—'}
+              sub={platform
+                ? platform.deployments.successRate != null
+                  ? `${platform.deployments.successRate}% success rate`
+                  : 'No deployment history'
+                : 'Metrics unavailable'}
               icon={GitBranch}
               accentClass="text-secondary"
               trend={platform?.deployments.successRate != null ? (platform.deployments.successRate >= 90 ? 'up' : 'down') : null}
             />
             <MetricCard
               label="Monthly Cloud Cost"
-              value={curMonthCost === undefined ? '—' : `$${curMonthCost.toFixed(2)}`}
+              value={curMonthCost == null ? '—' : `$${curMonthCost.toFixed(2)}`}
               sub={
-                costDeltaPct !== null
-                  ? `${Number(costDeltaPct) >= 0 ? '+' : ''}${costDeltaPct}% vs last month`
-                  : 'No prior month data'
+                costError
+                  ? 'Cost data unavailable'
+                  : !costSummary?.hasAwsData
+                    ? 'No AWS cost records reported yet'
+                    : costDeltaPct !== null
+                      ? `${Number(costDeltaPct) >= 0 ? '+' : ''}${costDeltaPct}% vs last month`
+                      : 'No prior month data'
               }
               icon={DollarSign}
               accentClass="text-emerald-400"
@@ -244,7 +265,7 @@ export const DashboardPage: React.FC = () => {
             />
             <MetricCard
               label="Active Queue Jobs"
-              value={platform?.deployments.activeJobs ?? 0}
+              value={platform?.deployments.activeJobs ?? '—'}
               sub="Provisioning workers"
               icon={Cpu}
               accentClass={
@@ -266,7 +287,7 @@ export const DashboardPage: React.FC = () => {
                 <h3 className="text-sm font-bold text-text">Infrastructure Health</h3>
               </div>
               <span className="text-[10px] font-mono text-text-muted px-2 py-0.5 bg-bg-secondary rounded-lg border border-border">
-                {metrics?.uptimeFormatted ?? '—'} uptime
+                API uptime: {metrics?.uptimeFormatted ?? '—'}
               </span>
             </div>
 
@@ -292,9 +313,9 @@ export const DashboardPage: React.FC = () => {
               </p>
               <div className="grid grid-cols-3 gap-2 text-center">
                 {[
-                  { label: 'Active', value: platform?.services.active ?? 0, color: 'text-emerald-400' },
-                  { label: 'Pending', value: platform?.services.pending ?? 0, color: 'text-warning' },
-                  { label: 'Failed', value: platform?.services.failed ?? 0, color: 'text-danger' },
+                  { label: 'Active', value: platform?.services.active ?? '—', color: 'text-emerald-400' },
+                  { label: 'Pending', value: platform?.services.pending ?? '—', color: 'text-warning' },
+                  { label: 'Failed', value: platform?.services.failed ?? '—', color: 'text-danger' },
                 ].map(({ label, value, color }) => (
                   <div key={label} className="p-2.5 rounded-xl bg-bg-secondary border border-border">
                     <p className={`text-lg font-extrabold ${color}`}>{value}</p>
@@ -328,6 +349,10 @@ export const DashboardPage: React.FC = () => {
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="h-12 bg-bg-secondary rounded-xl" />
                 ))}
+              </div>
+            ) : !metrics ? (
+              <div className="flex-1 flex items-center justify-center py-8 text-sm text-text-muted">
+                Deployment history is unavailable.
               </div>
             ) : recentDeployments.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center text-center py-8 gap-3">
@@ -443,15 +468,13 @@ export const DashboardPage: React.FC = () => {
                   <div className="p-3 bg-bg-secondary rounded-xl border border-border">
                     <p className="text-[10px] text-text-muted mb-1">Total Accumulated</p>
                     <p className="text-xl font-extrabold text-emerald-400">
-                      {(platform?.cost.totalSpendUsd ?? costSummary?.totalCostUsd) === undefined
-                        ? '—'
-                        : `$${(platform?.cost.totalSpendUsd ?? costSummary?.totalCostUsd ?? 0).toFixed(2)}`}
+                      {accumulatedCost == null ? '—' : `$${accumulatedCost.toFixed(2)}`}
                     </p>
                   </div>
                   <div className="p-3 bg-bg-secondary rounded-xl border border-border">
                     <p className="text-[10px] text-text-muted mb-1">This Month</p>
                     <p className="text-xl font-extrabold text-text">
-                      {curMonthCost === undefined ? '—' : `$${curMonthCost.toFixed(2)}`}
+                      {curMonthCost == null ? '—' : `$${curMonthCost.toFixed(2)}`}
                     </p>
                   </div>
                 </div>
@@ -482,16 +505,16 @@ export const DashboardPage: React.FC = () => {
                 )}
 
                 {/* Top spending services leaderboard */}
-                {(costSummary?.servicesCosts ?? []).length > 0 && (
+                {costServices.length > 0 && (
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
                       Top Services by Spend
                     </p>
-                    {[...costSummary!.servicesCosts]
+                    {[...costServices]
                       .sort((a, b) => b.totalUsd - a.totalUsd)
                       .slice(0, 4)
                       .map((sc, i) => {
-                        const maxCost = [...costSummary!.servicesCosts]
+                        const maxCost = [...costServices]
                           .sort((a, b) => b.totalUsd - a.totalUsd)[0]?.totalUsd || 1;
                         const pct = ((sc.totalUsd / maxCost) * 100).toFixed(0);
                         return (

@@ -23,10 +23,10 @@ resource "aws_iam_role" "provisioning" {
         Effect    = "Allow"
         Principal = { AWS = var.backend_role_arn }
         Condition = {
-          "ForAllValues:StringEquals" = { "aws:TagKeys" = ["forge:service-id", "forge:team-id"] }
+          "ForAllValues:StringEquals" = { "aws:TagKeys" = ["forge:service-id", "forge:user-id", "forge:team-id"] }
+          "ForAnyValue:StringEquals"  = { "aws:TagKeys" = ["forge:user-id", "forge:team-id"] }
           Null = {
             "aws:RequestTag/forge:service-id" = "false"
-            "aws:RequestTag/forge:team-id"    = "false"
           }
         }
       }

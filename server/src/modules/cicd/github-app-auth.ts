@@ -24,13 +24,22 @@ import type { GitHubAppToken } from './types.js';
 // Token Cache
 // ---------------------------------------------------------------------------
 
-let cachedToken: GitHubAppToken | null = null;
+const cachedTokens = new Map<number, GitHubAppToken>();
+const installationIdsByOwner = new Map<string, number>();
+
+export class GitHubInstallationNotFoundError extends Error {
+  constructor(owner: string) {
+    super(`The SCAPE GitHub App is not installed for ${owner}.`);
+    this.name = 'GitHubInstallationNotFoundError';
+  }
+}
 
 /**
  * Clear the cached token (useful for testing or forced refresh).
  */
 export function clearTokenCache(): void {
-  cachedToken = null;
+  cachedTokens.clear();
+  installationIdsByOwner.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -87,7 +96,7 @@ function base64url(input: string): string {
  *
  * If App credentials are not configured, falls back to GITHUB_TOKEN.
  */
-export async function getInstallationToken(): Promise<string | null> {
+export async function getInstallationToken(owner?: string): Promise<string | null> {
   // Fall back to PAT if App is not configured
   if (!config.github.appId || !config.github.privateKeyPath) {
     if (config.nodeEnv === 'production') {
@@ -102,7 +111,11 @@ export async function getInstallationToken(): Promise<string | null> {
     return null;
   }
 
-  // Check cached token (with 5-minute buffer before expiry)
+  const ownerKey = owner?.toLowerCase();
+  const cachedInstallationId = ownerKey
+    ? installationIdsByOwner.get(ownerKey)
+    : Number(config.github.installationId) || undefined;
+  const cachedToken = cachedInstallationId ? cachedTokens.get(cachedInstallationId) : undefined;
   if (cachedToken) {
     const bufferMs = 5 * 60 * 1000;
     if (cachedToken.expiresAt.getTime() - bufferMs > Date.now()) {
@@ -122,7 +135,10 @@ export async function getInstallationToken(): Promise<string | null> {
     const jwtOctokit = new Octokit({ auth: jwt });
 
     // Get installations for this App
-    const { data: installations } = await jwtOctokit.apps.listInstallations();
+    const installations = await jwtOctokit.paginate(
+      jwtOctokit.apps.listInstallations,
+      { per_page: 100 },
+    );
 
     if (installations.length === 0) {
       logger.warn('No GitHub App installations found');
@@ -130,14 +146,26 @@ export async function getInstallationToken(): Promise<string | null> {
     }
 
     const requestedId = Number(config.github.installationId);
-    const installation = requestedId
-      ? installations.find((candidate) => candidate.id === requestedId)
-      : installations[0];
+    const installation = ownerKey
+      ? installations.find((candidate) => candidate.account?.login?.toLowerCase() === ownerKey)
+      : requestedId
+        ? installations.find((candidate) => candidate.id === requestedId)
+        : installations[0];
     if (!installation) {
+      if (owner) throw new GitHubInstallationNotFoundError(owner);
       logger.error({ requestedId }, 'Configured GitHub App installation was not found');
       return null;
     }
     const installationId = installation.id;
+    const installationOwner = installation.account?.login;
+    if (installationOwner) {
+      installationIdsByOwner.set(installationOwner.toLowerCase(), installationId);
+    }
+
+    const installationToken = cachedTokens.get(installationId);
+    if (installationToken && installationToken.expiresAt.getTime() - 5 * 60 * 1000 > Date.now()) {
+      return installationToken.token;
+    }
 
     // Create installation access token
     const { data: tokenData } = await jwtOctokit.apps.createInstallationAccessToken({
@@ -145,19 +173,21 @@ export async function getInstallationToken(): Promise<string | null> {
     });
 
     // Cache the token
-    cachedToken = {
+    const token = {
       token: tokenData.token,
       expiresAt: new Date(tokenData.expires_at),
       installationId,
     };
+    cachedTokens.set(installationId, token);
 
     logger.info(
       { installationId, expiresAt: tokenData.expires_at },
       'GitHub App installation token acquired',
     );
 
-    return cachedToken.token;
+    return token.token;
   } catch (err: any) {
+    if (err instanceof GitHubInstallationNotFoundError) throw err;
     logger.error({ err: err.message }, 'Failed to acquire GitHub App installation token');
     return null;
   }
@@ -167,8 +197,8 @@ export async function getInstallationToken(): Promise<string | null> {
  * Create an Octokit instance authenticated with the App installation token.
  * Returns null if authentication is not configured.
  */
-export async function createAuthenticatedOctokit(): Promise<Octokit | null> {
-  const token = await getInstallationToken();
+export async function createAuthenticatedOctokit(owner?: string): Promise<Octokit | null> {
+  const token = await getInstallationToken(owner);
   if (!token) return null;
 
   return new Octokit({ auth: token });

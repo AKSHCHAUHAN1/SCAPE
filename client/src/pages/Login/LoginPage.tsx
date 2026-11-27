@@ -40,6 +40,14 @@ export default function LoginPage() {
         setError('Password must be at least 8 characters long.');
         return;
       }
+      if (password.length > 100) {
+        setError('Password must be at most 100 characters long.');
+        return;
+      }
+      if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+        setError('Password must contain at least one uppercase letter, one lowercase letter, and one number.');
+        return;
+      }
       if (password !== confirmPassword) {
         setError('Passwords do not match.');
         return;
@@ -53,7 +61,7 @@ export default function LoginPage() {
         const data = await authApi.login({ email, password });
         loginToStore(data.accessToken, data.user);
         setSuccessMsg('Authentication successful. Redirecting...');
-        setTimeout(() => navigate('/services'), 400);
+        setTimeout(() => navigate('/dashboard'), 400);
       } else {
         const data = await authApi.register({
           email,
@@ -61,12 +69,13 @@ export default function LoginPage() {
         });
         loginToStore(data.accessToken, data.user);
         setSuccessMsg('Account created successfully. Redirecting...');
-        setTimeout(() => navigate('/services'), 400);
+        setTimeout(() => navigate('/dashboard'), 400);
       }
     } catch (err: any) {
+      const validationMessage = err.response?.data?.details?.errors?.[0]?.message;
       const serverMsg =
+        validationMessage ||
         err.response?.data?.message ||
-        err.response?.data?.details?.errors?.[0]?.message ||
         'Authentication failed. Please check your credentials.';
       setError(serverMsg);
     } finally {
@@ -154,6 +163,7 @@ export default function LoginPage() {
               <input
                 type="email"
                 required
+                maxLength={255}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="developer@company.com"
@@ -171,6 +181,8 @@ export default function LoginPage() {
               <input
                 type="password"
                 required
+                minLength={mode === 'register' ? 8 : undefined}
+                maxLength={mode === 'register' ? 100 : undefined}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -190,6 +202,8 @@ export default function LoginPage() {
                   <input
                     type="password"
                     required
+                    minLength={8}
+                    maxLength={100}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="••••••••"
@@ -199,7 +213,7 @@ export default function LoginPage() {
               </div>
 
               <div className="rounded-xl border border-primary/10 bg-primary/5 px-3.5 py-3 text-xs leading-relaxed text-text-secondary">
-                New accounts start with developer access. A platform administrator assigns team membership and any elevated role.
+                Your account is personal. Services, deployment history, and cost data are visible only to you.
               </div>
             </>
           )}
@@ -223,7 +237,7 @@ export default function LoginPage() {
         {/* Footer Security Badging */}
         <div className="mt-6 pt-4 border-t border-border/50 flex items-center justify-center gap-2 text-xs text-text-muted">
           <Sparkles className="w-4 h-4 text-primary" />
-          <span>RS256 authentication · role based access</span>
+          <span>RS256 authentication · private personal workspace</span>
         </div>
       </div>
     </div>

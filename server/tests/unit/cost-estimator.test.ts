@@ -9,9 +9,21 @@ vi.mock('@aws-sdk/client-pricing', () => ({
   GetProductsCommand: vi.fn().mockImplementation((input) => input),
 }));
 
-import { estimateServiceCost } from '../../src/modules/cost/cost-estimator.js';
+import {
+  estimateServiceCost,
+  getPricingEstimateFailureMessage,
+} from '../../src/modules/cost/cost-estimator.js';
 
 describe('estimateServiceCost()', () => {
+  it('explains how to resolve AWS Pricing API access denial without exposing AWS error details', () => {
+    expect(getPricingEstimateFailureMessage(Object.assign(new Error('sensitive role details'), {
+      name: 'AccessDeniedException',
+    }))).toContain('CostExplorerReadRole includes pricing:GetProducts');
+    expect(getPricingEstimateFailureMessage(Object.assign(new Error('internal response'), {
+      name: 'ThrottlingException',
+    }))).not.toContain('internal response');
+  });
+
   it('calculates a planned Fargate estimate from AWS on-demand rates', async () => {
     const makeProduct = (attributes: Record<string, string>, price: string, description: string) => JSON.stringify({
       product: { attributes },

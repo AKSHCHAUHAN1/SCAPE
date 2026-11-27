@@ -35,7 +35,7 @@ describe('Deployments Service - Unit Tests', () => {
       // 1. getServiceById check
       mockQuery.mockResolvedValueOnce({
         rows: [{
-          id: 'srv-1', team_id: 'team-1', name: 'service-a', status: 'active',
+          id: 'srv-1', owner_id: 'user-1', name: 'service-a', status: 'active',
           repository_url: 'https://github.com/team/service-a',
         }],
         rowCount: 1, command: '', oid: 0, fields: []
@@ -61,8 +61,6 @@ describe('Deployments Service - Unit Tests', () => {
       const result = await createDeployment(
         { serviceId: 'srv-1', branch: 'main' },
         'user-1',
-        'team-1',
-        'developer',
       );
 
       expect(result.id).toBe('dep-1');
@@ -78,7 +76,7 @@ describe('Deployments Service - Unit Tests', () => {
 
       // getServiceById check
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 'srv-1', team_id: 'team-1' }],
+        rows: [{ id: 'srv-1', owner_id: 'user-1' }],
         rowCount: 1, command: '', oid: 0, fields: []
       });
 
@@ -101,7 +99,7 @@ describe('Deployments Service - Unit Tests', () => {
         rowCount: 1, command: '', oid: 0, fields: []
       });
 
-      const list = await getDeploymentsByServiceId('srv-1', 'team-1', 'developer');
+      const list = await getDeploymentsByServiceId('srv-1', 'user-1');
       expect(list).toHaveLength(1);
       expect(list[0].id).toBe('dep-1');
       expect(list[0].status).toBe('succeeded');

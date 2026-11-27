@@ -68,42 +68,12 @@ async function withRetry<T>(
 // ---------------------------------------------------------------------------
 
 export class GitHubIntegrator {
-  private octokitPromise: Promise<Octokit | null>;
-
-  constructor() {
-    this.octokitPromise = createAuthenticatedOctokit();
-  }
-
-  private async requireOctokit(): Promise<Octokit> {
-    const octokit = await this.octokitPromise;
+  private async requireOctokit(owner?: string): Promise<Octokit> {
+    const octokit = await createAuthenticatedOctokit(owner);
     if (!octokit) {
       throw new Error('GitHub App credentials are required to access the selected repository.');
     }
     return octokit;
-  }
-
-  /** Return repositories available to the configured GitHub App installation. */
-  async listAccessibleRepositories(): Promise<Array<{
-    id: number;
-    name: string;
-    fullName: string;
-    htmlUrl: string;
-    owner: string;
-  }>> {
-    const octokit = await this.requireOctokit();
-    const repositories = await withRetry(
-      () => octokit.paginate(octokit.apps.listReposAccessibleToInstallation, { per_page: 100 }),
-      'listAccessibleRepositories',
-    );
-    return repositories
-      .map((repository) => ({
-        id: repository.id,
-        name: repository.name,
-        fullName: repository.full_name,
-        htmlUrl: repository.html_url,
-        owner: repository.owner.login,
-      }))
-      .sort((left, right) => left.fullName.localeCompare(right.fullName));
   }
 
   /** Verify app access and return immutable repository identifiers for OIDC trust. */
@@ -112,11 +82,10 @@ export class GitHubIntegrator {
     fullName: string;
     ownerId: number;
     repositoryId: number;
-    hasAdminAccess: boolean;
   }> {
     const parsed = this.parseRepoUrl(repoUrl);
     if (!parsed) throw new Error('Enter a valid https://github.com/owner/repository URL.');
-    const octokit = await this.requireOctokit();
+    const octokit = await this.requireOctokit(parsed.owner);
     const { data } = await withRetry(
       () => octokit.repos.get({ owner: parsed.owner, repo: parsed.repo }),
       'getRepositoryMetadata',
@@ -126,7 +95,6 @@ export class GitHubIntegrator {
       fullName: data.full_name,
       ownerId: data.owner.id,
       repositoryId: data.id,
-      hasAdminAccess: data.permissions?.admin === true,
     };
   }
 
@@ -134,7 +102,7 @@ export class GitHubIntegrator {
   async dispatchDeployment(repoUrl: string, branch = 'main'): Promise<void> {
     const parsed = this.parseRepoUrl(repoUrl);
     if (!parsed) throw new Error(`Invalid GitHub repository URL: ${repoUrl}`);
-    const octokit = await this.requireOctokit();
+    const octokit = await this.requireOctokit(parsed.owner);
     await withRetry(
       () => octokit.actions.createWorkflowDispatch({
         owner: parsed.owner,
@@ -177,7 +145,7 @@ export class GitHubIntegrator {
     const message = payload.commitMessage || 'ci: add SCAPE automated deployment workflow';
     const parsed = this.parseRepoUrl(payload.repoUrl);
     if (!parsed) throw new Error(`Invalid GitHub repository URL: ${payload.repoUrl}`);
-    const octokit = await this.requireOctokit();
+    const octokit = await this.requireOctokit(parsed.owner);
 
     return withRetry(async () => {
       // Check if file already exists (to get SHA for update)
@@ -226,7 +194,7 @@ export class GitHubIntegrator {
   async registerWebhook(payload: WebhookRegistrationPayload): Promise<WebhookRegistrationResult> {
     const parsed = this.parseRepoUrl(payload.repoUrl);
     if (!parsed) throw new Error(`Invalid GitHub repository URL: ${payload.repoUrl}`);
-    const octokit = await this.requireOctokit();
+    const octokit = await this.requireOctokit(parsed.owner);
 
     return withRetry(async () => {
       // Check if webhook already exists for this URL

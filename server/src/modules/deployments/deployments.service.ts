@@ -43,11 +43,9 @@ function formatDeployment(row: DeploymentRow) {
 export async function createDeployment(
   input: CreateDeploymentInput,
   userId: string,
-  teamId: string,
-  userRole: string,
 ) {
   // Validate service exists and user has access
-  const service = await getServiceById(input.serviceId, teamId, userRole);
+  const service = await getServiceById(input.serviceId, userId);
   if (service.status !== 'active') {
     throw new AppError(409, 'SERVICE_NOT_READY', 'Only active services can be deployed');
   }
@@ -95,11 +93,10 @@ export async function createDeployment(
  */
 export async function getDeploymentsByServiceId(
   serviceId: string,
-  teamId: string,
-  userRole: string,
+  ownerId: string,
 ) {
   // Ensure access
-  await getServiceById(serviceId, teamId, userRole);
+  await getServiceById(serviceId, ownerId);
 
   const result = await query<DeploymentRow>(
     `SELECT * FROM deployments WHERE service_id = $1 ORDER BY created_at DESC`,
@@ -114,8 +111,7 @@ export async function getDeploymentsByServiceId(
  */
 export async function getDeploymentById(
   deploymentId: string,
-  teamId: string,
-  userRole: string,
+  ownerId: string,
 ) {
   const result = await query<DeploymentRow>(
     `SELECT * FROM deployments WHERE id = $1`,
@@ -128,7 +124,7 @@ export async function getDeploymentById(
 
   const deployment = result.rows[0];
   // Verify access to service
-  await getServiceById(deployment.service_id, teamId, userRole);
+  await getServiceById(deployment.service_id, ownerId);
 
   return formatDeployment(deployment);
 }

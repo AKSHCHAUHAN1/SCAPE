@@ -33,8 +33,6 @@ describe('Auth Service - Unit Tests', () => {
       const mockCreatedUser = {
         id: '11111111-1111-1111-1111-111111111111',
         email: 'developer@example.com',
-        role: 'developer',
-        team_id: null,
       };
       mockQuery.mockResolvedValueOnce({
         rows: [mockCreatedUser],
@@ -54,14 +52,14 @@ describe('Auth Service - Unit Tests', () => {
       expect(result.user).toEqual({
         id: mockCreatedUser.id,
         email: mockCreatedUser.email,
-        role: mockCreatedUser.role,
-        teamId: mockCreatedUser.team_id,
       });
 
       // Verify token is a valid RS256 access token.
       const decoded = jwt.verify(result.accessToken, config.jwt.publicKey, { algorithms: ['RS256'] }) as any;
       expect(decoded.userId).toBe(mockCreatedUser.id);
       expect(decoded.email).toBe(mockCreatedUser.email);
+      expect(decoded).not.toHaveProperty('role');
+      expect(decoded).not.toHaveProperty('teamId');
       expect(decoded.tokenUse).toBe('access');
       expect(mockQuery).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO refresh_sessions'),
@@ -98,8 +96,6 @@ describe('Auth Service - Unit Tests', () => {
         id: 'user-uuid-1234',
         email: 'user@example.com',
         password_hash: hashedPassword,
-        role: 'developer',
-        team_id: 'team-uuid-5678',
       };
 
       // 1. User lookup by email
@@ -131,8 +127,8 @@ describe('Auth Service - Unit Tests', () => {
       expect(result).toHaveProperty('accessToken');
       expect(result).toHaveProperty('refreshToken');
       expect(result.user.email).toBe('user@example.com');
-      expect(result.user.role).toBe('developer');
-      expect(result.user.teamId).toBe('team-uuid-5678');
+      expect(result.user).not.toHaveProperty('role');
+      expect(result.user).not.toHaveProperty('teamId');
     });
 
     it('should throw AppError 401 when email is not found', async () => {
@@ -163,8 +159,6 @@ describe('Auth Service - Unit Tests', () => {
             id: 'user-1',
             email: 'user@example.com',
             password_hash: hashedPassword,
-            role: 'developer',
-            team_id: null,
           },
         ],
         rowCount: 1,
@@ -188,8 +182,6 @@ describe('Auth Service - Unit Tests', () => {
       const validPayload = {
         userId: 'u-123',
         email: 'test@example.com',
-        role: 'developer',
-        teamId: 't-456',
         tokenUse: 'refresh',
         jti: '11111111-1111-4111-8111-111111111111',
       };
@@ -200,7 +192,7 @@ describe('Auth Service - Unit Tests', () => {
 
       // Load user, rotate the existing session, and persist the replacement session.
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 'u-123', email: 'test@example.com', role: 'developer', team_id: 't-456' }],
+        rows: [{ id: 'u-123', email: 'test@example.com' }],
         rowCount: 1,
         command: '',
         oid: 0,
@@ -221,6 +213,8 @@ describe('Auth Service - Unit Tests', () => {
       expect(decoded.userId).toBe('u-123');
       expect(decoded.email).toBe('test@example.com');
       expect(decoded.tokenUse).toBe('access');
+      expect(decoded).not.toHaveProperty('role');
+      expect(decoded).not.toHaveProperty('teamId');
     });
 
     it('should throw AppError 401 for an invalid or expired refresh token', async () => {
@@ -233,7 +227,7 @@ describe('Auth Service - Unit Tests', () => {
     it('should throw AppError 401 if user from valid token is no longer in database', async () => {
       const mockQuery = vi.mocked(query);
       const token = jwt.sign(
-        { userId: 'deleted-user', email: 'del@example.com', role: 'developer', teamId: '', tokenUse: 'refresh', jti: '22222222-2222-4222-8222-222222222222' },
+        { userId: 'deleted-user', email: 'del@example.com', tokenUse: 'refresh', jti: '22222222-2222-4222-8222-222222222222' },
         config.jwt.privateKey,
         { algorithm: 'RS256', expiresIn: '1h' },
       );
@@ -254,14 +248,14 @@ describe('Auth Service - Unit Tests', () => {
 
     it('should reject a refresh token that has already been revoked or rotated', async () => {
       const token = jwt.sign(
-        { userId: 'u-revoked', email: 'revoked@example.com', role: 'developer', teamId: '', tokenUse: 'refresh', jti: '33333333-3333-4333-8333-333333333333' },
+        { userId: 'u-revoked', email: 'revoked@example.com', tokenUse: 'refresh', jti: '33333333-3333-4333-8333-333333333333' },
         config.jwt.privateKey,
         { algorithm: 'RS256', expiresIn: '1h' },
       );
 
       const mockQuery = vi.mocked(query);
       mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 'u-revoked', email: 'revoked@example.com', role: 'developer', team_id: null }],
+        rows: [{ id: 'u-revoked', email: 'revoked@example.com' }],
         rowCount: 1, command: '', oid: 0, fields: [],
       });
       mockQuery.mockResolvedValueOnce({

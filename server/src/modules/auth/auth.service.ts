@@ -12,15 +12,11 @@ interface UserRow {
   id: string;
   email: string;
   password_hash?: string;
-  role: string;
-  team_id: string | null;
 }
 
 interface TokenPayload {
   userId: string;
   email: string;
-  role: string;
-  teamId: string;
 }
 
 interface RefreshPayload extends TokenPayload {
@@ -63,12 +59,10 @@ function toUser(user: UserRow) {
   return {
     id: user.id,
     email: user.email,
-    role: user.role,
-    teamId: user.team_id,
   };
 }
 
-/** Register an unprivileged developer account; team assignment is an admin action. */
+/** Register an individual account with private, owner-scoped resources. */
 export async function register(input: RegisterInput) {
   const existing = await query<UserRow>(
     'SELECT id FROM users WHERE email = $1',
@@ -81,17 +75,15 @@ export async function register(input: RegisterInput) {
 
   const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
   const result = await query<UserRow>(
-    `INSERT INTO users (email, password_hash, role, team_id)
-     VALUES ($1, $2, 'developer', NULL)
-     RETURNING id, email, role, team_id`,
+    `INSERT INTO users (email, password_hash)
+     VALUES ($1, $2)
+     RETURNING id, email`,
     [input.email, passwordHash],
   );
   const user = result.rows[0];
   const tokens = await issueTokens({
     userId: user.id,
     email: user.email,
-    role: user.role,
-    teamId: user.team_id || '',
   });
 
   return { ...tokens, user: toUser(user) };
@@ -100,7 +92,7 @@ export async function register(input: RegisterInput) {
 /** Login with email and password. */
 export async function login(input: LoginInput) {
   const result = await query<UserRow>(
-    'SELECT id, email, password_hash, role, team_id FROM users WHERE email = $1',
+    'SELECT id, email, password_hash FROM users WHERE email = $1',
     [input.email],
   );
 
@@ -118,8 +110,6 @@ export async function login(input: LoginInput) {
   const tokens = await issueTokens({
     userId: user.id,
     email: user.email,
-    role: user.role,
-    teamId: user.team_id || '',
   });
 
   return { ...tokens, user: toUser(user) };
@@ -141,7 +131,7 @@ export async function refreshAccessToken(refreshToken: string) {
   }
 
   const userResult = await query<UserRow>(
-    'SELECT id, email, role, team_id FROM users WHERE id = $1',
+    'SELECT id, email FROM users WHERE id = $1',
     [payload.userId],
   );
   if (!userResult.rowCount || userResult.rowCount === 0) {
@@ -164,8 +154,6 @@ export async function refreshAccessToken(refreshToken: string) {
   return issueTokens({
     userId: user.id,
     email: user.email,
-    role: user.role,
-    teamId: user.team_id || '',
   });
 }
 

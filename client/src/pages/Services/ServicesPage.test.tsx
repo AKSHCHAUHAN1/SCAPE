@@ -16,8 +16,6 @@ describe('ServicesPage Component', () => {
     useAuthStore.getState().login('mock-jwt', {
       id: 'usr-1',
       email: 'dev@scape.dev',
-      role: 'developer',
-      teamId: 'team-1',
     });
   });
 
@@ -34,7 +32,6 @@ describe('ServicesPage Component', () => {
           monthlySpendUsd: 120.5,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          teamId: 'team-1',
           templateId: 'tmpl-1',
         },
         {
@@ -47,7 +44,6 @@ describe('ServicesPage Component', () => {
           monthlySpendUsd: 45.0,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          teamId: 'team-1',
           templateId: 'tmpl-2',
         },
       ],
@@ -102,5 +98,29 @@ describe('ServicesPage Component', () => {
     );
 
     expect(screen.getByText(/No services found/i)).toBeInTheDocument();
+    expect(screen.getByText('No active provisioning jobs')).toBeInTheDocument();
+  });
+
+  it('does not present unavailable service stats as zero', () => {
+    vi.mocked(servicesHooks.useServices).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('API unavailable'),
+      refetch: vi.fn(),
+    } as any);
+    vi.mocked(servicesHooks.useDeleteService).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as any);
+
+    render(
+      <MemoryRouter>
+        <ServicesPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Total Services').closest('div.p-4')).toHaveTextContent(/Total Services[\s\S]*—/);
+    expect(screen.getByText('Queue data unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Unable to load services')).toBeInTheDocument();
   });
 });

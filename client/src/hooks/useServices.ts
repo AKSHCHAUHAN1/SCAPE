@@ -10,11 +10,9 @@ export function useServices() {
   });
 }
 
-export function useGitHubRepositories() {
-  return useQuery({
-    queryKey: ['githubRepositories'],
-    queryFn: () => servicesApi.getGitHubRepositories(),
-    staleTime: 30000,
+export function useValidateGitHubRepository() {
+  return useMutation({
+    mutationFn: (repositoryUrl: string) => servicesApi.validateGitHubRepository(repositoryUrl),
   });
 }
 

@@ -6,8 +6,6 @@ export async function create(req: Request, res: Response, next: NextFunction) {
     const deployment = await deploymentsService.createDeployment(
       req.body,
       req.user!.userId,
-      req.user!.teamId,
-      req.user!.role,
     );
     res.status(202).json(deployment);
   } catch (err) {
@@ -20,8 +18,7 @@ export async function getByServiceId(req: Request, res: Response, next: NextFunc
     const serviceId = (req.params.serviceId || req.params.id) as string;
     const deployments = await deploymentsService.getDeploymentsByServiceId(
       serviceId,
-      req.user!.teamId,
-      req.user!.role,
+      req.user!.userId,
     );
     res.json(deployments);
   } catch (err) {
@@ -33,8 +30,7 @@ export async function getById(req: Request, res: Response, next: NextFunction) {
   try {
     const deployment = await deploymentsService.getDeploymentById(
       req.params.id as string,
-      req.user!.teamId,
-      req.user!.role,
+      req.user!.userId,
     );
     res.json(deployment);
   } catch (err) {

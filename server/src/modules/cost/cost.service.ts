@@ -15,6 +15,7 @@ interface CostRecordRow {
   amount_usd: string;
   currency: string;
   aws_resource_ids: any;
+  aws_service_costs: any;
   synced_at: Date;
   created_at: Date;
 }
@@ -27,15 +28,20 @@ export async function estimateConfiguredServiceCost(input: ServiceCostEstimateRe
   if (!template.rowCount) {
     throw new AppError(404, 'TEMPLATE_NOT_FOUND', 'Service template not found or inactive.');
   }
-  return estimateInfrastructureCost({
-    region: input.region,
-    modulePath: template.rows[0].terraform_module_path,
-    computeMode: input.computeMode,
-    ec2InstanceType: input.ec2InstanceType,
-    requestedVcpu: input.requestedVcpu,
-    requestedMemoryGiB: input.requestedMemoryGiB,
-    expectedDurationHours: input.expectedDurationHours,
-  });
+  try {
+    return await estimateInfrastructureCost({
+      region: input.region,
+      modulePath: template.rows[0].terraform_module_path,
+      computeMode: input.computeMode,
+      ec2InstanceType: input.ec2InstanceType,
+      requestedVcpu: input.requestedVcpu,
+      requestedMemoryGiB: input.requestedMemoryGiB,
+      expectedDurationHours: input.expectedDurationHours,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not retrieve current AWS Pricing data.';
+    throw new AppError(503, 'COST_ESTIMATE_UNAVAILABLE', message);
+  }
 }
 
 function formatCostRecord(row: CostRecordRow) {
@@ -50,7 +56,11 @@ function formatCostRecord(row: CostRecordRow) {
     periodEnd: pEnd,
     amountUsd: parseFloat(row.amount_usd),
     currency: row.currency,
-    awsResourceIds: Array.isArray(row.aws_resource_ids) ? row.aws_resource_ids : [],
+    awsServices: Array.isArray(row.aws_resource_ids)
+      ? row.aws_resource_ids.filter((service: unknown): service is string =>
+          typeof service === 'string' && service !== 'AWS service')
+      : [],
+    awsServiceCosts: Array.isArray(row.aws_service_costs) ? row.aws_service_costs : [],
     syncedAt: row.synced_at,
     createdAt: row.created_at,
   };
@@ -62,10 +72,9 @@ function formatCostRecord(row: CostRecordRow) {
 export async function getCostsByServiceId(
   serviceId: string,
   period: string | undefined,
-  teamId: string,
-  userRole: string,
+  ownerId: string,
 ) {
-  const service = await getServiceById(serviceId, teamId, userRole);
+  const service = await getServiceById(serviceId, ownerId);
 
   let q = `SELECT * FROM cost_records WHERE service_id = $1`;
   const params: any[] = [serviceId];
@@ -92,52 +101,53 @@ export async function getCostsByServiceId(
     ? null
     : Math.max(0, (completedAt - startedAt) / (60 * 60 * 1000));
 
-  // Group by resource
-  const resourceBreakdown: Record<string, number> = {};
+  // Use only exact AWS service-group amounts returned by Cost Explorer.
+  const awsServiceBreakdown: Record<string, number> = {};
   for (const r of records) {
-    for (const resId of r.awsResourceIds) {
-      resourceBreakdown[resId] = (resourceBreakdown[resId] || 0) + (r.amountUsd / (r.awsResourceIds.length || 1));
+    for (const serviceCost of r.awsServiceCosts) {
+      awsServiceBreakdown[serviceCost.serviceName] =
+        (awsServiceBreakdown[serviceCost.serviceName] || 0) + Number(serviceCost.amountUsd);
     }
   }
 
   return {
     serviceId,
-    totalUsd: parseFloat(totalAmount.toFixed(2)),
+    serviceStatus: service.status,
+    hasAwsData: records.length > 0,
+    totalUsd: records.length ? parseFloat(totalAmount.toFixed(2)) : null,
     expectedDurationHours: service.expectedDurationHours,
-    estimatedHourlyCostUsd: service.estimatedHourlyCostUsd,
-    estimatedTotalCostUsd: service.estimatedTotalCostUsd,
     actualRuntimeHours: actualRuntimeHours === null ? null : Number(actualRuntimeHours.toFixed(2)),
     records,
-    resourceBreakdown: Object.entries(resourceBreakdown).map(([name, amount]) => ({
-      resource: name,
+    awsServiceBreakdown: Object.entries(awsServiceBreakdown).map(([serviceName, amount]) => ({
+      serviceName,
       amountUsd: parseFloat(amount.toFixed(2)),
     })),
   };
 }
 
 /**
- * Get aggregate cost summary across all services for team / admin.
+ * Get aggregate cost summary across services owned by one account.
  */
-export async function getCostSummary(teamId: string, userRole: string) {
-  let servicesQuery = 'SELECT id, name, team_id, status FROM services';
-  const params: any[] = [];
+function emptyCostSummary(servicesCount = 0) {
+  return {
+    hasAwsData: false,
+    totalCostUsd: null,
+    monthlyCostUsd: null,
+    servicesCount,
+    servicesCosts: [],
+    monthlyTrend: [],
+  };
+}
 
-  if (userRole !== 'admin') {
-    servicesQuery += ' WHERE team_id = $1';
-    params.push(teamId);
-  }
-
-  const services = await query(servicesQuery, params);
+export async function getCostSummary(ownerId: string) {
+  const services = await query(
+    'SELECT id, name, status FROM services WHERE owner_id = $1',
+    [ownerId],
+  );
   const serviceIds = services.rows.map((s: any) => s.id);
 
   if (serviceIds.length === 0) {
-    return {
-      totalCostUsd: 0,
-      monthlyCostUsd: 0,
-      servicesCount: 0,
-      servicesCosts: [],
-      monthlyTrend: [],
-    };
+    return emptyCostSummary();
   }
 
   const costRes = await query<CostRecordRow>(
@@ -148,16 +158,17 @@ export async function getCostSummary(teamId: string, userRole: string) {
   );
 
   const records = costRes.rows.map(formatCostRecord);
-  const totalCostUsd = parseFloat(records.reduce((acc, r) => acc + r.amountUsd, 0).toFixed(2));
+  const hasAwsData = records.length > 0;
+  const totalCostUsd = hasAwsData
+    ? parseFloat(records.reduce((acc, r) => acc + r.amountUsd, 0).toFixed(2))
+    : null;
 
   // Current month cost
   const currentMonthStr = new Date().toISOString().substring(0, 7);
-  const currentMonthCost = parseFloat(
-    records
-      .filter((r) => r.periodStart.startsWith(currentMonthStr))
-      .reduce((acc, r) => acc + r.amountUsd, 0)
-      .toFixed(2),
-  );
+  const currentMonthRecords = records.filter((r) => r.periodStart.startsWith(currentMonthStr));
+  const currentMonthCost = currentMonthRecords.length
+    ? parseFloat(currentMonthRecords.reduce((acc, r) => acc + r.amountUsd, 0).toFixed(2))
+    : null;
 
   // Monthly trend
   const trendMap: Record<string, number> = {};
@@ -182,10 +193,13 @@ export async function getCostSummary(teamId: string, userRole: string) {
   const servicesCosts = services.rows.map((s: any) => ({
     serviceId: s.id,
     serviceName: s.name,
-    totalUsd: parseFloat((serviceCostMap[s.id] || 0).toFixed(2)),
+    totalUsd: records.some((r) => r.serviceId === s.id)
+      ? parseFloat((serviceCostMap[s.id] || 0).toFixed(2))
+      : null,
   }));
 
   return {
+    hasAwsData,
     totalCostUsd,
     monthlyCostUsd: currentMonthCost,
     servicesCount: services.rows.length,
@@ -199,13 +213,14 @@ export async function getCostSummary(teamId: string, userRole: string) {
  */
 export async function upsertCostRecord(input: RecordCostInput) {
   const result = await query<CostRecordRow>(
-    `INSERT INTO cost_records (service_id, period_start, period_end, amount_usd, currency, aws_resource_ids, synced_at)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW())
+    `INSERT INTO cost_records (service_id, period_start, period_end, amount_usd, currency, aws_resource_ids, aws_service_costs, synced_at)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, NOW())
      ON CONFLICT (service_id, period_start, period_end)
      DO UPDATE SET
        amount_usd = EXCLUDED.amount_usd,
        currency = EXCLUDED.currency,
        aws_resource_ids = EXCLUDED.aws_resource_ids,
+       aws_service_costs = EXCLUDED.aws_service_costs,
        synced_at = NOW()
      RETURNING *`,
     [
@@ -214,7 +229,8 @@ export async function upsertCostRecord(input: RecordCostInput) {
       input.periodEnd,
       input.amountUsd,
       input.currency || 'USD',
-      JSON.stringify(input.awsResourceIds || []),
+      JSON.stringify(input.awsServices || []),
+      JSON.stringify(input.awsServiceCosts || []),
     ],
   );
 
@@ -239,7 +255,8 @@ export async function syncDailyCosts() {
       periodStart: string;
       periodEnd: string;
       amountUsd: number;
-      resourceIds: Set<string>;
+      awsServices: Set<string>;
+      awsServiceCosts: Map<string, number>;
     }>();
     for (const item of items) {
       const key = `${item.serviceId}:${item.periodStart}:${item.periodEnd}`;
@@ -248,10 +265,17 @@ export async function syncDailyCosts() {
         periodStart: item.periodStart,
         periodEnd: item.periodEnd,
         amountUsd: 0,
-        resourceIds: new Set<string>(),
+        awsServices: new Set<string>(),
+        awsServiceCosts: new Map<string, number>(),
       };
       current.amountUsd += item.amountUsd;
-      item.resourceIds.forEach((resourceId) => current.resourceIds.add(resourceId));
+      if (item.awsService) {
+        current.awsServices.add(item.awsService);
+        current.awsServiceCosts.set(
+          item.awsService,
+          (current.awsServiceCosts.get(item.awsService) ?? 0) + item.amountUsd,
+        );
+      }
       dailyServiceCosts.set(key, current);
     }
 
@@ -262,7 +286,11 @@ export async function syncDailyCosts() {
         periodEnd: dailyCost.periodEnd,
         amountUsd: dailyCost.amountUsd,
         currency: 'USD',
-        awsResourceIds: [...dailyCost.resourceIds],
+        awsServices: [...dailyCost.awsServices],
+        awsServiceCosts: [...dailyCost.awsServiceCosts].map(([serviceName, amountUsd]) => ({
+          serviceName,
+          amountUsd,
+        })),
       });
     }
     logger.info({ count: dailyServiceCosts.size }, 'Synced AWS Cost Explorer records');

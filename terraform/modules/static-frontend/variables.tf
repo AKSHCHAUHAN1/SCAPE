@@ -20,9 +20,16 @@ variable "environment" {
   default     = "staging"
 }
 
-variable "owner_team" {
-  description = "Team ID that owns this service"
+variable "owner_id" {
+  description = "Account ID that owns this service"
   type        = string
+  default     = null
+}
+
+variable "owner_team" {
+  description = "Legacy owner variable retained for existing service state during decommission"
+  type        = string
+  default     = null
 }
 
 variable "github_repository" {

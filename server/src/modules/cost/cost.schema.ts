@@ -18,9 +18,13 @@ export const recordCostSchema = z.object({
   serviceId: z.string().uuid(),
   periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  amountUsd: z.number().nonnegative(),
+  amountUsd: z.number(),
   currency: z.string().length(3).default('USD'),
-  awsResourceIds: z.array(z.string()).default([]),
+  awsServices: z.array(z.string()).default([]),
+  awsServiceCosts: z.array(z.object({
+    serviceName: z.string(),
+    amountUsd: z.number(),
+  })).optional(),
 });
 
 export type RecordCostInput = z.infer<typeof recordCostSchema>;

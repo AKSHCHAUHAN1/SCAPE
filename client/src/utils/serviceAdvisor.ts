@@ -15,7 +15,7 @@ export interface Ec2InstanceOption {
 // live price catalog.
 export const EC2_INSTANCE_OPTIONS: Ec2InstanceOption[] = [
   { type: 't3.micro', family: 'bursty', vcpu: 2, memoryGiB: 1, useCase: 'Tiny experiments' },
-  { type: 't3.small', family: 'bursty', vcpu: 2, memoryGiB: 2, useCase: 'Small demo services' },
+  { type: 't3.small', family: 'bursty', vcpu: 2, memoryGiB: 2, useCase: 'Small bursty workloads' },
   { type: 't3.medium', family: 'bursty', vcpu: 2, memoryGiB: 4, useCase: 'Development APIs' },
   { type: 't3.large', family: 'bursty', vcpu: 2, memoryGiB: 8, useCase: 'Moderate bursty workloads' },
   { type: 't3.xlarge', family: 'bursty', vcpu: 4, memoryGiB: 16, useCase: 'Larger bursty workloads' },

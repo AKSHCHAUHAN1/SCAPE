@@ -51,7 +51,7 @@ describe('LoginPage Component', () => {
     fireEvent.click(createAccountTab);
 
     expect(screen.getByText('Confirm Password')).toBeInTheDocument();
-    expect(screen.getByText(/New accounts start with developer access/)).toBeInTheDocument();
+    expect(screen.getByText(/Your account is personal/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/role|team/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Create Platform Account/i })).toBeInTheDocument();
 
@@ -80,8 +80,6 @@ describe('LoginPage Component', () => {
       user: {
         id: 'user-123',
         email: 'developer@example.com',
-        role: 'developer',
-        teamId: 'team-1',
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
         lastLoginAt: '2026-01-01T00:00:00Z',
@@ -110,6 +108,7 @@ describe('LoginPage Component', () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true);
       expect(useAuthStore.getState().accessToken).toBe('mock-access-token');
       expect(screen.getByText('Authentication successful. Redirecting...')).toBeInTheDocument();
+      expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
     });
   });
 
@@ -137,5 +136,62 @@ describe('LoginPage Component', () => {
     fireEvent.submit(form!);
 
     expect(await screen.findByText('Invalid email or password.')).toBeInTheDocument();
+  });
+
+  it('explains password complexity before sending a registration request', async () => {
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^Create Account/i }));
+    fireEvent.change(screen.getByPlaceholderText('developer@company.com'), {
+      target: { value: 'developer@example.com' },
+    });
+    const passwordInputs = screen.getAllByPlaceholderText('••••••••');
+    fireEvent.change(passwordInputs[0], { target: { value: 'password123' } });
+    fireEvent.change(passwordInputs[1], { target: { value: 'password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Create Platform Account/i }));
+
+    expect(await screen.findByText(
+      'Password must contain at least one uppercase letter, one lowercase letter, and one number.',
+    )).toBeInTheDocument();
+    expect(authApi.register).not.toHaveBeenCalled();
+  });
+
+  it('shows field-level validation details returned by the registration API', async () => {
+    vi.mocked(authApi.register).mockRejectedValueOnce({
+      response: {
+        data: {
+          message: 'Request validation failed',
+          details: {
+            errors: [{
+              field: 'password',
+              message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+            }],
+          },
+        },
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^Create Account/i }));
+    fireEvent.change(screen.getByPlaceholderText('developer@company.com'), {
+      target: { value: 'developer@example.com' },
+    });
+    const passwordInputs = screen.getAllByPlaceholderText('••••••••');
+    fireEvent.change(passwordInputs[0], { target: { value: 'Password123' } });
+    fireEvent.change(passwordInputs[1], { target: { value: 'Password123' } });
+    fireEvent.click(screen.getByRole('button', { name: /Create Platform Account/i }));
+
+    expect(await screen.findByText(
+      'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+    )).toBeInTheDocument();
   });
 });

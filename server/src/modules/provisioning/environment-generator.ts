@@ -84,7 +84,7 @@ module "service" {
   github_repository_id = var.github_repository_id
   region       = var.region
   environment  = var.environment
-  owner_team   = var.owner_team
+  owner_id     = var.owner_id
   tags         = var.tags
 ${computeVariables}
 }
@@ -120,7 +120,7 @@ variable "environment" {
   default = "${cfg.environment}"
 }
 
-variable "owner_team" {
+variable "owner_id" {
   type = string
 }
 
@@ -200,11 +200,11 @@ function generateTfVarsJson(cfg: EnvironmentConfig): string {
     github_repository_id: cfg.githubRepositoryId,
     region: cfg.region,
     environment: cfg.environment,
-    owner_team: cfg.ownerTeam,
+    owner_id: cfg.ownerId,
     tags: {
       ...cfg.tags,
       'forge:service-id': cfg.serviceId,
-      'forge:team-id': cfg.ownerTeam,
+      'forge:user-id': cfg.ownerId,
       ManagedBy: 'scape',
     },
   };

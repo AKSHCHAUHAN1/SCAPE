@@ -9,12 +9,10 @@ describe('Sidebar Component', () => {
     useAuthStore.getState().logout();
   });
 
-  it('renders standard navigation links for regular developer', () => {
+  it('renders personal workspace navigation without role-based links', () => {
     useAuthStore.getState().login('mock-jwt', {
       id: 'dev-1',
       email: 'dev@company.com',
-      role: 'developer',
-      teamId: 'team-1',
     });
 
     render(
@@ -27,16 +25,14 @@ describe('Sidebar Component', () => {
     expect(screen.getByText('Service Catalog')).toBeInTheDocument();
     expect(screen.getByText('Create Service')).toBeInTheDocument();
     expect(screen.getByText('Cost Dashboard')).toBeInTheDocument();
-    expect(screen.getByText('Profile & Team')).toBeInTheDocument();
+    expect(screen.getByText('Account')).toBeInTheDocument();
     expect(screen.queryByText('Audit Logs')).not.toBeInTheDocument();
   });
 
-  it('renders Audit Logs link for admin users', () => {
+  it('does not expose admin-only navigation', () => {
     useAuthStore.getState().login('mock-jwt', {
       id: 'admin-1',
       email: 'admin@company.com',
-      role: 'admin',
-      teamId: 'team-1',
     });
 
     render(
@@ -45,6 +41,6 @@ describe('Sidebar Component', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Audit Logs')).toBeInTheDocument();
+    expect(screen.queryByText('Audit Logs')).not.toBeInTheDocument();
   });
 });

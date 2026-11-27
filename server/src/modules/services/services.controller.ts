@@ -11,7 +11,6 @@ export async function create(req: Request, res: Response, next: NextFunction) {
     const result = await servicesService.createService(
       req.body,
       req.user!.userId,
-      req.user!.teamId,
     );
     res.status(202).json(result);
   } catch (err) {
@@ -24,21 +23,18 @@ export async function create(req: Request, res: Response, next: NextFunction) {
  */
 export async function getAll(req: Request, res: Response, next: NextFunction) {
   try {
-    const services = await servicesService.getAllServices(
-      req.user!.teamId,
-      req.user!.role,
-    );
+    const services = await servicesService.getAllServices(req.user!.userId);
     res.json(services);
   } catch (err) {
     next(err);
   }
 }
 
-/** GET /services/github/repositories */
-export async function getGitHubRepositories(_req: Request, res: Response, next: NextFunction) {
+/** POST /services/github/repositories/validate */
+export async function validateGitHubRepository(req: Request, res: Response, next: NextFunction) {
   try {
-    const repositories = await servicesService.getGitHubRepositories();
-    res.json(repositories);
+    const repository = await servicesService.validateGitHubRepository(req.body.repositoryUrl);
+    res.json(repository);
   } catch (err) {
     next(err);
   }
@@ -51,8 +47,7 @@ export async function getById(req: Request, res: Response, next: NextFunction) {
   try {
     const service = await servicesService.getServiceById(
       req.params.id as string,
-      req.user!.teamId,
-      req.user!.role,
+      req.user!.userId,
     );
     res.json(service);
   } catch (err) {
@@ -65,8 +60,7 @@ export async function getHealth(req: Request, res: Response, next: NextFunction)
   try {
     const health = await servicesService.getServiceHealth(
       req.params.id as string,
-      req.user!.teamId,
-      req.user!.role,
+      req.user!.userId,
     );
     res.json(health);
   } catch (err) {
@@ -82,8 +76,6 @@ export async function remove(req: Request, res: Response, next: NextFunction) {
     const result = await servicesService.deleteService(
       req.params.id as string,
       req.user!.userId,
-      req.user!.teamId,
-      req.user!.role,
     );
     res.status(202).json(result);
   } catch (err) {

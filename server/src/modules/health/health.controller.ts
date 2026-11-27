@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { pool, query } from '../../database/index.js';
+import { redisConnection } from '../../queue/index.js';
 import { logger } from '../../utils/logger.js';
 
 const SERVER_START_TIME = Date.now();
@@ -46,10 +47,10 @@ export async function getReady(_req: Request, res: Response): Promise<void> {
  * Extended platform health metrics for the dashboard.
  * Returns live counts, uptime, queue status, and recent activity.
  */
-export async function getMetrics(_req: Request, res: Response): Promise<void> {
+export async function getMetrics(req: Request, res: Response): Promise<void> {
   const uptimeMs = Date.now() - SERVER_START_TIME;
+  const ownerId = req.user!.userId;
 
-  // Parallel queries for platform stats
   const [
     servicesRes,
     activeServicesRes,
@@ -59,68 +60,80 @@ export async function getMetrics(_req: Request, res: Response): Promise<void> {
     recentDeploymentsRes,
     activeJobsRes,
     costTotalRes,
-    dbHealthRes,
-  ] = await Promise.allSettled([
-    query('SELECT COUNT(*) AS total FROM services'),
-    query("SELECT COUNT(*) AS total FROM services WHERE status = 'active'"),
-    query("SELECT COUNT(*) AS total FROM services WHERE status IN ('pending','provisioning')"),
-    query("SELECT COUNT(*) AS total FROM services WHERE status = 'failed'"),
-    query("SELECT COUNT(*) AS total FROM deployments"),
+    queueHealth,
+  ] = await Promise.all([
+    query('SELECT COUNT(*) AS total FROM services WHERE owner_id = $1', [ownerId]),
+    query("SELECT COUNT(*) AS total FROM services WHERE owner_id = $1 AND status = 'active'", [ownerId]),
+    query("SELECT COUNT(*) AS total FROM services WHERE owner_id = $1 AND status IN ('pending','provisioning')", [ownerId]),
+    query("SELECT COUNT(*) AS total FROM services WHERE owner_id = $1 AND status = 'failed'", [ownerId]),
+    query(
+      `SELECT COUNT(*) AS total FROM deployments d
+       JOIN services s ON s.id = d.service_id WHERE s.owner_id = $1`,
+      [ownerId],
+    ),
     query(
       `SELECT d.id, d.status, d.branch, d.commit_sha, d.started_at, d.completed_at, s.name AS service_name
        FROM deployments d
        JOIN services s ON s.id = d.service_id
+       WHERE s.owner_id = $1
        ORDER BY d.created_at DESC
        LIMIT 10`,
+      [ownerId],
     ),
-    query("SELECT COUNT(*) AS total FROM provisioning_jobs WHERE status IN ('queued','running')"),
-    query('SELECT COALESCE(SUM(amount_usd), 0) AS total FROM cost_records'),
-    pool.query('SELECT 1'),
+    query(
+      `SELECT COUNT(*) AS total FROM provisioning_jobs j
+       JOIN services s ON s.id = j.service_id
+       WHERE s.owner_id = $1 AND j.status IN ('queued','running')`,
+      [ownerId],
+    ),
+    query(
+      `SELECT COUNT(*) AS count, SUM(c.amount_usd) AS total FROM cost_records c
+       JOIN services s ON s.id = c.service_id WHERE s.owner_id = $1`,
+      [ownerId],
+    ),
+    redisConnection.ping(),
   ]);
 
-  const get = (result: PromiseSettledResult<any>, field = 'total') => {
-    if (result.status === 'fulfilled') {
-      const row = result.value?.rows?.[0];
-      return row ? Number(row[field] ?? 0) : 0;
-    }
-    return 0;
-  };
+  const get = (result: { rows: Array<Record<string, unknown>> }, field = 'total') =>
+    Number(result.rows[0][field]);
+  const recentDeployments = recentDeploymentsRes.rows.map((d: any) => ({
+    id: d.id,
+    status: d.status,
+    branch: d.branch,
+    commitSha: d.commit_sha,
+    serviceName: d.service_name,
+    startedAt: d.started_at,
+    completedAt: d.completed_at,
+    durationMs:
+      d.started_at && d.completed_at
+        ? new Date(d.completed_at).getTime() - new Date(d.started_at).getTime()
+        : null,
+  }));
 
-  const recentDeployments =
-    recentDeploymentsRes.status === 'fulfilled'
-      ? recentDeploymentsRes.value.rows.map((d: any) => ({
-          id: d.id,
-          status: d.status,
-          branch: d.branch,
-          commitSha: d.commit_sha,
-          serviceName: d.service_name,
-          startedAt: d.started_at,
-          completedAt: d.completed_at,
-          durationMs:
-            d.started_at && d.completed_at
-              ? new Date(d.completed_at).getTime() - new Date(d.started_at).getTime()
-              : null,
-        }))
-      : [];
-
-  const dbOk = dbHealthRes.status === 'fulfilled';
-
-  // Deployment success rate (last 20)
   const successRateRes = await query<{ status: string; cnt: string }>(
     `SELECT status, COUNT(*) AS cnt
-     FROM (SELECT status FROM deployments ORDER BY created_at DESC LIMIT 20) sub
+     FROM (
+       SELECT d.status FROM deployments d
+       JOIN services s ON s.id = d.service_id
+       WHERE s.owner_id = $1
+       ORDER BY d.created_at DESC LIMIT 20
+     ) sub
      GROUP BY status`,
-  ).catch(() => ({ rows: [] as { status: string; cnt: string }[] }));
+    [ownerId],
+  );
 
   const statusCounts: Record<string, number> = {};
   for (const row of successRateRes.rows) {
     statusCounts[row.status] = Number(row.cnt);
   }
   const totalRecent = Object.values(statusCounts).reduce((a, b) => a + b, 0);
-  const successRate = totalRecent > 0 ? Math.round(((statusCounts['succeeded'] || 0) / totalRecent) * 100) : 100;
+  const successRate = totalRecent > 0
+    ? Math.round(((statusCounts['succeeded'] || 0) / totalRecent) * 100)
+    : null;
+  const queueHealthy = queueHealth === 'PONG';
 
   res.json({
-    status: dbOk ? 'healthy' : 'degraded',
+    status: queueHealthy ? 'healthy' : 'degraded',
     uptimeMs,
     uptimeFormatted: formatUptime(uptimeMs),
     timestamp: new Date().toISOString(),
@@ -138,12 +151,14 @@ export async function getMetrics(_req: Request, res: Response): Promise<void> {
         recentDeployments,
       },
       cost: {
-        totalSpendUsd: parseFloat(Number(get(costTotalRes)).toFixed(2)),
+        totalSpendUsd: get(costTotalRes, 'count') > 0
+          ? parseFloat(Number(get(costTotalRes, 'total')).toFixed(2))
+          : null,
       },
       infrastructure: {
-        database: dbOk ? 'healthy' : 'unreachable',
+        database: 'healthy',
         api: 'healthy',
-        provisioningQueue: get(activeJobsRes) >= 0 ? 'operational' : 'unknown',
+        provisioningQueue: queueHealthy ? 'operational' : 'unreachable',
         costSync: 'scheduled',
       },
     },
@@ -167,65 +182,13 @@ function formatUptime(ms: number): string {
  */
 export async function getPrometheusMetrics(_req: Request, res: Response): Promise<void> {
   const uptimeSeconds = (Date.now() - SERVER_START_TIME) / 1000;
-
-  try {
-    const [servicesByStatus, jobsByStatus, deploymentsByStatus, costRes] = await Promise.allSettled([
-      query<{ status: string; count: string }>('SELECT status, COUNT(*) AS count FROM services GROUP BY status'),
-      query<{ status: string; count: string }>('SELECT status, COUNT(*) AS count FROM provisioning_jobs GROUP BY status'),
-      query<{ status: string; count: string }>('SELECT status, COUNT(*) AS count FROM deployments GROUP BY status'),
-      query<{ total: string }>('SELECT COALESCE(SUM(amount_usd), 0) AS total FROM cost_records'),
-    ]);
-
-    const lines: string[] = [
-      '# HELP forge_uptime_seconds Total time the server has been running in seconds',
-      '# TYPE forge_uptime_seconds gauge',
-      `forge_uptime_seconds ${uptimeSeconds.toFixed(2)}`,
-      '',
-      '# HELP forge_services_total Total count of registered services by status',
-      '# TYPE forge_services_total gauge',
-    ];
-
-    if (servicesByStatus.status === 'fulfilled') {
-      for (const row of servicesByStatus.value.rows) {
-        lines.push(`forge_services_total{status="${row.status}"} ${row.count}`);
-      }
-    }
-
-    lines.push(
-      '',
-      '# HELP forge_provisioning_jobs_total Total count of provisioning jobs by status',
-      '# TYPE forge_provisioning_jobs_total gauge',
-    );
-    if (jobsByStatus.status === 'fulfilled') {
-      for (const row of jobsByStatus.value.rows) {
-        lines.push(`forge_provisioning_jobs_total{status="${row.status}"} ${row.count}`);
-      }
-    }
-
-    lines.push(
-      '',
-      '# HELP forge_deployments_total Total count of deployments by status',
-      '# TYPE forge_deployments_total gauge',
-    );
-    if (deploymentsByStatus.status === 'fulfilled') {
-      for (const row of deploymentsByStatus.value.rows) {
-        lines.push(`forge_deployments_total{status="${row.status}"} ${row.count}`);
-      }
-    }
-
-    lines.push(
-      '',
-      '# HELP forge_cost_total_usd Total aggregated cloud infrastructure spend in USD',
-      '# TYPE forge_cost_total_usd gauge',
-    );
-    const totalCost = costRes.status === 'fulfilled' ? Number(costRes.value.rows[0]?.total ?? 0) : 0;
-    lines.push(`forge_cost_total_usd ${totalCost.toFixed(2)}`, '');
-
-    res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
-    res.send(lines.join('\n'));
-  } catch (err) {
-    logger.error({ err }, 'Error collecting prometheus metrics');
-    res.status(500).send('# Error collecting metrics\n');
-  }
+  const lines = [
+    '# HELP scape_uptime_seconds Total time the server has been running in seconds',
+    '# TYPE scape_uptime_seconds gauge',
+    `scape_uptime_seconds ${uptimeSeconds.toFixed(2)}`,
+    '',
+  ];
+  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
+  res.send(lines.join('\n'));
 }
 

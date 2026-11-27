@@ -9,8 +9,7 @@ export async function getByServiceId(req: Request, res: Response, next: NextFunc
     const costs = await costService.getCostsByServiceId(
       serviceId,
       period,
-      req.user!.teamId,
-      req.user!.role,
+      req.user!.userId,
     );
     res.json(costs);
   } catch (err) {
@@ -20,10 +19,7 @@ export async function getByServiceId(req: Request, res: Response, next: NextFunc
 
 export async function getSummary(req: Request, res: Response, next: NextFunction) {
   try {
-    const summary = await costService.getCostSummary(
-      req.user!.teamId,
-      req.user!.role,
-    );
+    const summary = await costService.getCostSummary(req.user!.userId);
     res.json(summary);
   } catch (err) {
     next(err);

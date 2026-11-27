@@ -15,7 +15,6 @@ import {
   List,
   ExternalLink,
   DollarSign,
-  AlertTriangle,
   Server,
   Globe,
   Trash2,
@@ -26,7 +25,8 @@ import {
 } from 'lucide-react';
 
 export const ServicesPage: React.FC = () => {
-  const { data: services = [], isLoading, error, refetch } = useServices();
+  const { data: serviceData, isLoading, error, refetch } = useServices();
+  const services = serviceData ?? [];
   const { data: costSummary } = useCostSummary();
   const deleteServiceMutation = useDeleteService();
 
@@ -49,6 +49,7 @@ export const ServicesPage: React.FC = () => {
 
   // Metric stats
   const metrics = useMemo(() => {
+    if (!serviceData) return null;
     const total = services.length;
     const active = services.filter((s) => s.status === 'active').length;
     const provisioning = services.filter(
@@ -56,7 +57,7 @@ export const ServicesPage: React.FC = () => {
     ).length;
     const failed = services.filter((s) => s.status === 'failed').length;
     return { total, active, provisioning, failed };
-  }, [services]);
+  }, [serviceData, services]);
 
   const handleDelete = async () => {
     if (!serviceToDelete) return;
@@ -101,7 +102,7 @@ export const ServicesPage: React.FC = () => {
               <span className="text-xs font-medium text-text-muted">Total Services</span>
               <Layers className="w-4 h-4 text-text-secondary" />
             </div>
-            <p className="text-2xl font-extrabold text-text mt-2">{metrics.total}</p>
+            <p className="text-2xl font-extrabold text-text mt-2">{metrics?.total ?? '—'}</p>
             <span className="text-[11px] text-text-muted">Provisioned under team</span>
           </div>
 
@@ -110,17 +111,23 @@ export const ServicesPage: React.FC = () => {
                 <span className="text-xs font-medium text-text-muted">Active services</span>
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
             </div>
-            <p className="text-2xl font-extrabold text-emerald-400 mt-2">{metrics.active}</p>
+            <p className="text-2xl font-extrabold text-emerald-400 mt-2">{metrics?.active ?? '—'}</p>
             <span className="text-[11px] text-text-muted font-medium">Ready for deployment</span>
           </div>
 
           <div className="p-4 rounded-2xl bg-surface border border-border shadow-md shadow-black/10">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-text-muted">Provisioning Queue</span>
-              <Clock className="w-4 h-4 text-indigo-400 animate-spin" />
+              <Clock className="w-4 h-4 text-indigo-400" />
             </div>
-            <p className="text-2xl font-extrabold text-indigo-400 mt-2">{metrics.provisioning}</p>
-            <span className="text-[11px] text-indigo-400/80 font-medium">In Terraform pipeline</span>
+            <p className="text-2xl font-extrabold text-indigo-400 mt-2">{metrics?.provisioning ?? '—'}</p>
+            <span className="text-[11px] text-indigo-400/80 font-medium">
+              {!metrics
+                ? 'Queue data unavailable'
+                : metrics.provisioning > 0
+                  ? 'In Terraform pipeline'
+                  : 'No active provisioning jobs'}
+            </span>
           </div>
 
           <div className="p-4 rounded-2xl bg-surface border border-border shadow-md shadow-black/10">
@@ -129,9 +136,11 @@ export const ServicesPage: React.FC = () => {
               <TrendingUp className="w-4 h-4 text-secondary" />
             </div>
             <p className="text-2xl font-extrabold text-secondary mt-2">
-              {costSummary ? `$${costSummary.monthlyCostUsd.toFixed(2)}` : '—'}
+              {costSummary?.monthlyCostUsd == null ? '—' : `$${costSummary.monthlyCostUsd.toFixed(2)}`}
             </p>
-            <span className="text-[11px] text-text-muted font-mono">USD · synced cost data</span>
+            <span className="text-[11px] text-text-muted font-mono">
+              {costSummary?.hasAwsData ? 'USD · AWS Cost Explorer' : 'No AWS cost records yet'}
+            </span>
           </div>
         </div>
 
@@ -208,15 +217,16 @@ export const ServicesPage: React.FC = () => {
         )}
 
         {error && (
-          <div className="p-6 rounded-2xl bg-danger/10 border border-danger/20 text-center">
-            <AlertTriangle className="w-8 h-8 text-danger mx-auto mb-2" />
-            <p className="text-sm font-semibold text-text">Failed to fetch services</p>
-            <p className="text-xs text-text-secondary mt-1">
-              Please ensure the backend API server is reachable.
-            </p>
+          <div className="flex flex-col gap-3 rounded-xl border border-border bg-bg-secondary/70 p-4 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert">
+            <div>
+              <p className="font-medium text-text">Unable to load services</p>
+              <p className="mt-1 text-xs text-text-secondary">
+                Check the API connection and retry. An empty service list is shown separately.
+              </p>
+            </div>
             <button
               onClick={() => refetch()}
-              className="mt-4 px-4 py-2 bg-primary text-white text-xs font-semibold rounded-xl"
+              className="self-start rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-text-secondary hover:bg-bg-secondary sm:self-auto"
             >
               Retry
             </button>

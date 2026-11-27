@@ -46,9 +46,9 @@ describe('Health Endpoints - Integration Tests', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toContain('text/plain');
-    expect(res.text).toContain('# HELP forge_uptime_seconds');
-    expect(res.text).toContain('# HELP forge_services_total');
-    expect(res.text).toContain('# HELP forge_provisioning_jobs_total');
+    expect(res.text).toContain('# HELP scape_uptime_seconds');
+    expect(res.text).not.toContain('services_total');
+    expect(res.text).not.toContain('cost_total');
   });
 });
 

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 import { Link } from 'react-router-dom';
 import { Layout } from '../../components/layout/Layout.js';
 import { ProvisioningProgress } from '../../components/feedback/ProvisioningProgress.js';
 import { useTemplates } from '../../hooks/useTemplates.js';
-import { useCreateService, useGitHubRepositories } from '../../hooks/useServices.js';
+import { useCreateService, useValidateGitHubRepository } from '../../hooks/useServices.js';
 import { useServiceJobs } from '../../hooks/useServiceDetail.js';
-import { useServiceCostEstimate } from '../../hooks/useCosts.js';
 import type { JobStatus } from '../../types/index.js';
 import {
   EC2_INSTANCE_OPTIONS,
@@ -34,7 +34,7 @@ export const CreateServicePage: React.FC = () => {
 
   const { data: templates = [], isLoading: templatesLoading } = useTemplates();
   const createServiceMutation = useCreateService();
-  const { data: githubRepositories = [], isLoading: repositoriesLoading, error: repositoriesError } = useGitHubRepositories();
+  const validateRepositoryMutation = useValidateGitHubRepository();
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
@@ -51,6 +51,8 @@ export const CreateServicePage: React.FC = () => {
   const [serviceUseCase, setServiceUseCase] = useState<ServiceUseCase>('unsure');
   const [apiRuntime, setApiRuntime] = useState<ApiRuntime>('undecided');
   const [repositoryUrl, setRepositoryUrl] = useState('');
+  const [verifiedRepository, setVerifiedRepository] = useState<{ htmlUrl: string; fullName: string } | null>(null);
+  const [repositoryValidationError, setRepositoryValidationError] = useState<string | null>(null);
   const [expectedDurationHours, setExpectedDurationHours] = useState(24);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -72,15 +74,6 @@ export const CreateServicePage: React.FC = () => {
     requestedMemoryGiB,
     workloadProfile,
   );
-  const costEstimateInput = {
-    templateId: selectedTemplate?.id ?? '',
-    region,
-    computeMode,
-    ...(computeMode === 'ec2' ? { ec2InstanceType } : {}),
-    requestedVcpu,
-    requestedMemoryGiB,
-    expectedDurationHours,
-  };
   // Validation
   const isValidName = /^[a-z0-9-]+$/.test(serviceName) && serviceName.length >= 3;
   const isValidRegion = region.trim().length >= 5
@@ -91,11 +84,6 @@ export const CreateServicePage: React.FC = () => {
   const isValidDuration = Number.isInteger(expectedDurationHours)
     && expectedDurationHours >= 1
     && expectedDurationHours <= 8760;
-  const costEstimateQuery = useServiceCostEstimate(
-    costEstimateInput,
-    currentStep === 4 && Boolean(costEstimateInput.templateId) && isValidDuration,
-  );
-
   const handleNext = () => {
     setErrorMsg(null);
     if (currentStep === 1) {
@@ -118,8 +106,8 @@ export const CreateServicePage: React.FC = () => {
       }
       setCurrentStep(3);
     } else if (currentStep === 3) {
-      if (!repositoryUrl || !githubRepositories.some((repository) => repository.htmlUrl === repositoryUrl)) {
-        setErrorMsg('Select a repository available to the SCAPE GitHub App installation.');
+      if (!verifiedRepository || verifiedRepository.htmlUrl !== repositoryUrl) {
+        setErrorMsg('Enter your GitHub repository URL and verify SCAPE can access it.');
         return;
       }
       if (!isValidDuration) {
@@ -127,6 +115,22 @@ export const CreateServicePage: React.FC = () => {
         return;
       }
       setCurrentStep(4);
+    }
+  };
+
+  const handleVerifyRepository = async () => {
+    setRepositoryValidationError(null);
+    setVerifiedRepository(null);
+    try {
+      const repository = await validateRepositoryMutation.mutateAsync(repositoryUrl.trim());
+      setRepositoryUrl(repository.htmlUrl);
+      setVerifiedRepository(repository);
+    } catch (error) {
+      const message = axios.isAxiosError<{ message?: unknown }>(error)
+        && typeof error.response?.data?.message === 'string'
+        ? error.response.data.message
+        : 'Could not verify this repository. Check its URL and SCAPE GitHub App access.';
+      setRepositoryValidationError(message);
     }
   };
 
@@ -595,7 +599,7 @@ export const CreateServicePage: React.FC = () => {
                         onChange={(event) => setWorkloadProfile(event.target.value as WorkloadProfile)}
                         className="w-full rounded-xl border border-border bg-bg-secondary px-3 py-2.5 text-sm text-text"
                       >
-                        <option value="bursty">Bursty / demo</option>
+                        <option value="bursty">Bursty / intermittent</option>
                         <option value="balanced">General purpose</option>
                         <option value="compute">CPU intensive</option>
                         <option value="memory">Memory intensive</option>
@@ -683,34 +687,42 @@ export const CreateServicePage: React.FC = () => {
             <div className="rounded-2xl border border-border bg-surface p-6 space-y-5">
               <div>
                 <label htmlFor="github-repository" className="mb-1.5 block text-xs font-semibold text-text">
-                  Repository <span className="text-danger">*</span>
+                  Your GitHub repository URL <span className="text-danger">*</span>
                 </label>
-                <select
+                <input
                   id="github-repository"
+                  type="url"
                   value={repositoryUrl}
-                  onChange={(event) => setRepositoryUrl(event.target.value)}
-                  disabled={repositoriesLoading}
-                  className="w-full rounded-xl border border-border bg-bg-secondary px-3.5 py-2.5 text-sm text-text disabled:opacity-60"
-                >
-                  <option value="">
-                    {repositoriesLoading ? 'Loading connected repositories…' : 'Select a repository'}
-                  </option>
-                  {githubRepositories.map((repository) => (
-                    <option key={repository.id} value={repository.htmlUrl}>{repository.fullName}</option>
-                  ))}
-                </select>
-                {repositoriesError && (
-                  <p className="mt-2 text-[11px] text-danger">
-                    Could not load repositories. Check that the SCAPE GitHub App installation is configured and try again.
-                  </p>
-                )}
-                {!repositoriesLoading && !repositoriesError && githubRepositories.length === 0 && (
-                  <p className="mt-2 text-[11px] text-text-muted">
-                    No repositories are available. Install the SCAPE GitHub App on the repository owner or organization, then refresh this page.
-                  </p>
+                  onChange={(event) => {
+                    setRepositoryUrl(event.target.value);
+                    setVerifiedRepository(null);
+                    setRepositoryValidationError(null);
+                  }}
+                  placeholder="https://github.com/your-account/your-repository"
+                  autoComplete="url"
+                  aria-invalid={Boolean(repositoryValidationError)}
+                  className="w-full rounded-xl border border-border bg-bg-secondary px-3.5 py-2.5 text-sm text-text placeholder:text-text-muted"
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleVerifyRepository}
+                    disabled={!repositoryUrl.trim() || validateRepositoryMutation.isPending}
+                    className="rounded-lg border border-primary/30 px-3 py-1.5 text-[11px] font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+                  >
+                    {validateRepositoryMutation.isPending ? 'Verifying…' : 'Verify repository access'}
+                  </button>
+                  {verifiedRepository && (
+                    <span className="text-[11px] font-medium text-success" role="status">
+                      Verified: {verifiedRepository.fullName}
+                    </span>
+                  )}
+                </div>
+                {repositoryValidationError && (
+                  <p className="mt-2 text-[11px] text-danger" role="alert">{repositoryValidationError}</p>
                 )}
                 <p className="mt-2 text-[11px] text-text-muted">
-                  SCAPE needs repository administrator access to install the deployment webhook and workflow.
+                  The SCAPE GitHub App must be installed for this repository owner and granted repository permissions to manage workflows and webhooks. SCAPE will add the deployment workflow to your repo; it will not replace your application code.
                 </p>
               </div>
 
@@ -749,7 +761,7 @@ export const CreateServicePage: React.FC = () => {
                 </button>
                 <button
                   onClick={handleNext}
-                  disabled={!repositoryUrl || !isValidDuration || repositoriesLoading || Boolean(repositoriesError)}
+                  disabled={!verifiedRepository || verifiedRepository.htmlUrl !== repositoryUrl || !isValidDuration}
                   className="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-xs font-semibold text-white hover:bg-primary-hover disabled:opacity-50"
                 >
                   <span>Review & Confirm</span><ChevronRight className="h-4 w-4" />
@@ -794,7 +806,7 @@ export const CreateServicePage: React.FC = () => {
                 <div className="p-3.5 rounded-xl bg-bg-secondary border border-border/60">
                   <span className="text-[11px] text-text-muted block mb-1">Connected repository</span>
                   <a href={repositoryUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary hover:underline">
-                    {githubRepositories.find((repository) => repository.htmlUrl === repositoryUrl)?.fullName ?? repositoryUrl}
+                    {verifiedRepository?.fullName ?? repositoryUrl}
                   </a>
                 </div>
                 <div className="p-3.5 rounded-xl bg-bg-secondary border border-border/60">
@@ -815,35 +827,14 @@ export const CreateServicePage: React.FC = () => {
                 )}
               </div>
 
-              <section className="rounded-xl border border-secondary/20 bg-secondary/5 p-4" aria-live="polite">
-                <h3 className="text-xs font-bold text-text">Estimated infrastructure cost</h3>
-                {costEstimateQuery.isLoading ? (
-                  <p className="mt-2 text-xs text-text-secondary">Retrieving current AWS on-demand rates…</p>
-                ) : costEstimateQuery.error ? (
-                  <p className="mt-2 text-xs text-danger">
-                    Could not calculate a cost estimate. Check AWS Pricing API access and try again; provisioning is disabled until the estimate is available.
-                  </p>
-                ) : costEstimateQuery.data?.available ? (
-                  <>
-                    <p className="mt-2 text-lg font-bold text-text">
-                      ${costEstimateQuery.data.totalEstimateUsd?.toFixed(2)} USD
-                      <span className="ml-2 text-xs font-medium text-text-secondary">
-                        for {expectedDurationHours} hours (${costEstimateQuery.data.hourlyEstimateUsd?.toFixed(4)}/hour)
-                      </span>
-                    </p>
-                    <p className="mt-1 text-[11px] text-text-secondary">{costEstimateQuery.data.message}</p>
-                    <p className="mt-1 text-[11px] text-text-muted">
-                      Includes: {costEstimateQuery.data.includedResources.join(', ')}.
-                    </p>
-                    <p className="mt-1 text-[11px] text-text-muted">
-                      This is an estimate, not a quote. Actual AWS-billed costs are shown after Cost Explorer reports them.
-                    </p>
-                  </>
-                ) : (
-                  <p className="mt-2 text-xs text-text-secondary">
-                    {costEstimateQuery.data?.message ?? 'Estimate is not available for this configuration.'}
-                  </p>
-                )}
+              <section className="rounded-xl border border-border bg-bg-secondary/60 p-4">
+                <h3 className="text-xs font-bold text-text">AWS cost reporting</h3>
+                <p className="mt-2 text-xs leading-relaxed text-text-secondary">
+                  Deployment does not depend on a price estimate. SCAPE records AWS Cost Explorer spend after AWS reports usage tagged to this service. Billing data can be delayed; SCAPE keeps the service history and syncs costs daily.
+                </p>
+                <p className="mt-1.5 text-[11px] text-text-muted">
+                  Per-service costs require the <code>forge:service-id</code> cost-allocation tag to be activated in AWS Billing.
+                </p>
               </section>
 
               {/* IAM Least-Privilege & State Security */}
@@ -879,7 +870,7 @@ export const CreateServicePage: React.FC = () => {
                 </button>
                 <button
                   onClick={handleSubmit}
-                  disabled={createServiceMutation.isPending || costEstimateQuery.isLoading || Boolean(costEstimateQuery.error)}
+                  disabled={createServiceMutation.isPending}
                   className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-gradient-to-r from-primary to-primary-hover hover:shadow-lg hover:shadow-primary/30 text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50"
                 >
                   <Zap className="w-4 h-4" />

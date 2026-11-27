@@ -71,7 +71,7 @@ export interface ProvisioningJobData {
   requestedVcpu?: number;
   requestedMemoryGiB?: number;
   workloadProfile?: 'bursty' | 'balanced' | 'compute' | 'memory';
-  teamId: string;
+  ownerId: string;
   triggeredBy: string;
   repositoryUrl?: string | null;
 }
@@ -143,7 +143,7 @@ export interface EnvironmentConfig {
   ec2InstanceType?: string;
   requestedVcpu?: number;
   requestedMemoryGiB?: number;
-  ownerTeam: string;
+  ownerId: string;
   githubRepository: string;
   githubOwnerId: number;
   githubRepositoryId: number;

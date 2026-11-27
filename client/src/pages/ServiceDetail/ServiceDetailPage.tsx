@@ -485,8 +485,8 @@ export const ServiceDetailPage: React.FC = () => {
                   <span className="text-text font-bold">{service.id}</span>
                 </div>
                 <div className="p-3 bg-bg-secondary rounded-xl">
-                  <span className="text-text-muted block text-[11px] mb-1">TEAM_UUID</span>
-                  <span className="text-text font-bold">{service.teamId}</span>
+                  <span className="text-text-muted block text-[11px] mb-1">ACCOUNT_UUID</span>
+                  <span className="text-text font-bold">{service.ownerId}</span>
                 </div>
                 <div className="p-3 bg-bg-secondary rounded-xl">
                   <span className="text-text-muted block text-[11px] mb-1">AWS_REGION</span>

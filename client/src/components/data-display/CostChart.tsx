@@ -6,10 +6,6 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend,
 } from 'recharts';
 
 interface MonthlyTrendItem {
@@ -18,39 +14,25 @@ interface MonthlyTrendItem {
 }
 
 interface ResourceBreakdownItem {
-  resource: string;
+  serviceName: string;
   amountUsd: number;
 }
 
 interface CostChartProps {
   monthlyTrend?: MonthlyTrendItem[];
-  resourceBreakdown?: ResourceBreakdownItem[];
+  serviceBreakdown?: ResourceBreakdownItem[];
   currency?: string;
   className?: string;
 }
 
-const RESOURCE_COLORS: Record<string, string> = {
-  ECS: '#6366f1',
-  'ECS-Fargate': '#6366f1',
-  RDS: '#0ea5e9',
-  'RDS-Postgres': '#0ea5e9',
-  ALB: '#10b981',
-  VPC: '#f59e0b',
-  S3: '#ec4899',
-  CloudFront: '#8b5cf6',
-  CloudWatch: '#14b8a6',
-  Default: '#64748b',
-};
-
-const PALETTE = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6'];
-
 export const CostChart: React.FC<CostChartProps> = ({
   monthlyTrend = [],
-  resourceBreakdown = [],
+  serviceBreakdown = [],
   currency = 'USD',
   className = '',
 }) => {
   const formatCurrency = (val: number) => `$${val.toFixed(2)} ${currency}`;
+  const maxServiceCost = Math.max(0, ...serviceBreakdown.map((item) => Math.abs(item.amountUsd)));
 
   return (
     <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 ${className}`}>
@@ -122,60 +104,37 @@ export const CostChart: React.FC<CostChartProps> = ({
         </div>
       </section>
 
-      {/* Resource Breakdown Donut Chart */}
+      {/* Exact AWS service-group amounts */}
       <section className="bg-white border border-border rounded-2xl p-5 shadow-sm flex flex-col" aria-label="Cost by AWS service">
         <div className="mb-4">
-          <h4 className="text-base font-semibold text-text">AWS service breakdown</h4>
-          <p className="text-xs text-text-secondary">Cost Explorer groups reported by AWS service</p>
+          <h4 className="text-base font-semibold text-text">AWS service totals</h4>
+          <p className="text-xs text-text-secondary">Exact Cost Explorer service-group amounts</p>
         </div>
 
-        <div className="h-64 w-full flex items-center justify-center" role="img" aria-label="Donut chart showing reported cost by AWS service">
-          {resourceBreakdown.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-xs text-text-muted">
-              No resource breakdown recorded
+        <div className="h-64 w-full overflow-y-auto" aria-label="AWS Cost Explorer amounts grouped by service">
+          {serviceBreakdown.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-center text-xs text-text-muted">
+              No exact AWS service-group breakdown is available for these records.
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={resourceBreakdown}
-                  dataKey="amountUsd"
-                  nameKey="resource"
-                  cx="50%"
-                  cy="45%"
-                  innerRadius={55}
-                  outerRadius={80}
-                  paddingAngle={3}
-                >
-                  {resourceBreakdown.map((entry, index) => {
-                    const color =
-                      RESOURCE_COLORS[entry.resource] || PALETTE[index % PALETTE.length];
-                    return <Cell key={`cell-${index}`} fill={color} stroke="#ffffff" strokeWidth={2} />;
-                  })}
-                </Pie>
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const item = payload[0].payload as ResourceBreakdownItem;
-                      return (
-                        <div className="bg-bg-secondary/95 backdrop-blur-md border border-border p-2.5 rounded-xl shadow-xl text-xs">
-                          <p className="text-text font-medium">{item.resource}</p>
-                          <p className="text-xs font-bold text-secondary mt-0.5">
-                            {formatCurrency(item.amountUsd)}
-                          </p>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Legend
-                  verticalAlign="bottom"
-                  height={36}
-                  formatter={(value) => <span className="text-[11px] text-text-secondary">{value}</span>}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            <ul className="space-y-4">
+              {serviceBreakdown.map((item) => (
+                <li key={item.serviceName}>
+                  <div className="mb-1.5 flex items-center justify-between gap-3 text-xs">
+                    <span className="truncate text-text-secondary">{item.serviceName}</span>
+                    <span className={`shrink-0 font-semibold ${item.amountUsd < 0 ? 'text-danger' : 'text-text'}`}>
+                      {item.amountUsd < 0 ? '−' : ''}{formatCurrency(Math.abs(item.amountUsd))}
+                    </span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-bg-secondary">
+                    <div
+                      className={`h-full rounded-full ${item.amountUsd < 0 ? 'bg-danger/70' : 'bg-primary'}`}
+                      style={{ width: `${maxServiceCost ? (Math.abs(item.amountUsd) / maxServiceCost) * 100 : 0}%` }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       </section>

@@ -92,7 +92,6 @@ describe('ProvisioningWorker', () => {
       fullName: 'org/test-svc',
       ownerId: 10,
       repositoryId: 20,
-      hasAdminAccess: true,
     });
   });
 

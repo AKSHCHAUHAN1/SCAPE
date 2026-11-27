@@ -3,14 +3,14 @@ import { AppError } from '../../middleware/errorHandler.js';
 import { provisioningQueue } from '../../queue/index.js';
 import { logAction } from '../audit/audit.service.js';
 import { GitHubIntegrator } from '../cicd/github-client.js';
-import { estimateServiceCost } from '../cost/cost-estimator.js';
+import { GitHubInstallationNotFoundError } from '../cicd/github-app-auth.js';
 import type { CreateServiceInput } from './services.schema.js';
 
 interface ServiceRow {
   id: string;
   name: string;
   owner_id: string;
-  team_id: string;
+  team_id?: string | null;
   template_id: string;
   template_name?: string | null;
   status: string;
@@ -24,8 +24,6 @@ interface ServiceRow {
   requested_memory_gib: number;
   workload_profile: 'bursty' | 'balanced' | 'compute' | 'memory';
   expected_duration_hours: number;
-  estimated_hourly_cost_usd?: string | null;
-  estimated_total_cost_usd?: string | null;
   infrastructure_started_at: Date | null;
   infrastructure_decommissioned_at: Date | null;
   created_at: Date;
@@ -50,7 +48,6 @@ function formatService(s: ServiceRow) {
     id: s.id,
     name: s.name,
     ownerId: s.owner_id,
-    teamId: s.team_id,
     templateId: s.template_id,
     templateName: s.template_name ?? null,
     status: s.status,
@@ -64,12 +61,6 @@ function formatService(s: ServiceRow) {
     requestedMemoryGiB: Number(s.requested_memory_gib ?? 1),
     workloadProfile: s.workload_profile ?? 'bursty',
     expectedDurationHours: Number(s.expected_duration_hours ?? 24),
-    estimatedHourlyCostUsd: s.estimated_hourly_cost_usd === null || s.estimated_hourly_cost_usd === undefined
-      ? null
-      : Number(s.estimated_hourly_cost_usd),
-    estimatedTotalCostUsd: s.estimated_total_cost_usd === null || s.estimated_total_cost_usd === undefined
-      ? null
-      : Number(s.estimated_total_cost_usd),
     infrastructureStartedAt: s.infrastructure_started_at,
     infrastructureDecommissionedAt: s.infrastructure_decommissioned_at,
     createdAt: s.created_at,
@@ -80,14 +71,13 @@ function formatService(s: ServiceRow) {
 /**
  * Create a new service and enqueue a provisioning job.
  *
- * Flow: validate input → check duplicate name per team → create service record
+ * Flow: validate input → check duplicate name per owner → create service record
  * (status: pending) → create provisioning_job (status: queued) → enqueue
  * to BullMQ → respond 202 Accepted
  */
 export async function createService(
   input: CreateServiceInput,
   userId: string,
-  teamId: string,
 ) {
   const computeMode = input.computeMode ?? 'fargate';
   const requestedVcpu = input.requestedVcpu ?? 0.5;
@@ -95,19 +85,7 @@ export async function createService(
   const workloadProfile = input.workloadProfile ?? 'bursty';
   const environment = input.environment ?? 'development';
 
-  // Verify user has a team
-  if (!teamId) {
-    throw new AppError(422, 'NO_TEAM', 'You must belong to a team to create a service');
-  }
-
   const repository = await new GitHubIntegrator().getRepositoryMetadata(input.repositoryUrl);
-  if (!repository.hasAdminAccess) {
-    throw new AppError(
-      422,
-      'GITHUB_ADMIN_ACCESS_REQUIRED',
-      'Install the SCAPE GitHub App on a repository where you have administrator access.',
-    );
-  }
 
   // Verify template exists
   const template = await query(
@@ -118,26 +96,10 @@ export async function createService(
     throw new AppError(404, 'TEMPLATE_NOT_FOUND', 'Service template not found or inactive');
   }
 
-  let costEstimate;
-  try {
-    costEstimate = await estimateServiceCost({
-      region: input.region,
-      modulePath: template.rows[0].terraform_module_path,
-      computeMode,
-      ec2InstanceType: input.ec2InstanceType,
-      requestedVcpu,
-      requestedMemoryGiB,
-      expectedDurationHours: input.expectedDurationHours,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'AWS pricing data is unavailable.';
-    throw new AppError(503, 'COST_ESTIMATE_UNAVAILABLE', message);
-  }
-
-  // Check duplicate service name per team
+  // Check duplicate service name for this account.
   const existing = await query(
-    'SELECT id FROM services WHERE name = $1 AND team_id = $2',
-    [input.name, teamId],
+    'SELECT id FROM services WHERE name = $1 AND owner_id = $2',
+    [input.name, userId],
   );
   if (existing.rowCount && existing.rowCount > 0) {
     throw new AppError(409, 'SERVICE_EXISTS', 'A service with this name already exists in your team');
@@ -148,13 +110,12 @@ export async function createService(
     `INSERT INTO services
        (name, owner_id, team_id, template_id, status, region, environment,
         compute_mode, ec2_instance_type, requested_vcpu, requested_memory_gib, workload_profile,
-        repository_url, expected_duration_hours, estimated_hourly_cost_usd, estimated_total_cost_usd)
-     VALUES ($1, $2, $3, $4, 'pending', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          repository_url, expected_duration_hours)
+       VALUES ($1, $2, NULL, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
       input.name,
       userId,
-      teamId,
       input.templateId,
       input.region,
       environment,
@@ -165,8 +126,6 @@ export async function createService(
       workloadProfile,
       repository.htmlUrl,
       input.expectedDurationHours,
-      costEstimate.hourlyEstimateUsd,
-      costEstimate.totalEstimateUsd,
     ],
   );
   const service = serviceResult.rows[0];
@@ -197,7 +156,7 @@ export async function createService(
     requestedMemoryGiB,
     workloadProfile,
     expectedDurationHours: input.expectedDurationHours,
-    teamId,
+    ownerId: userId,
     triggeredBy: userId,
   }, { jobId: job.id });
 
@@ -219,7 +178,6 @@ export async function createService(
       workloadProfile,
       repositoryUrl: repository.htmlUrl,
       expectedDurationHours: input.expectedDurationHours,
-      estimateUsd: costEstimate.totalEstimateUsd,
     },
   });
 
@@ -234,68 +192,73 @@ export async function createService(
 }
 
 /**
- * Get all services for the user's team.
+ * Get all services owned by the account.
  */
-export async function getAllServices(teamId: string, userRole: string) {
-  let result;
-
-  if (userRole === 'admin') {
-    // Admins can see all services
-    result = await query<ServiceRow>(
-      `SELECT s.*, st.name AS template_name
-       FROM services s
-       LEFT JOIN service_templates st ON st.id = s.template_id
-       ORDER BY s.created_at DESC`,
-    );
-  } else {
-    // Regular users only see services from their team
-    result = await query<ServiceRow>(
-      `SELECT s.*, st.name AS template_name
-       FROM services s
-       LEFT JOIN service_templates st ON st.id = s.template_id
-       WHERE s.team_id = $1
-       ORDER BY s.created_at DESC`,
-      [teamId],
-    );
-  }
-
-  return result.rows.map(formatService);
-}
-
-/** Repositories exposed by the SCAPE GitHub App installation. */
-export async function getGitHubRepositories() {
-  return new GitHubIntegrator().listAccessibleRepositories();
-}
-
-/**
- * Get a service by ID with team ownership check.
- */
-export async function getServiceById(serviceId: string, teamId: string, userRole: string) {
+export async function getAllServices(ownerId: string) {
   const result = await query<ServiceRow>(
     `SELECT s.*, st.name AS template_name
      FROM services s
      LEFT JOIN service_templates st ON st.id = s.template_id
-     WHERE s.id = $1`,
-    [serviceId],
+     WHERE s.owner_id = $1
+     ORDER BY s.created_at DESC`,
+    [ownerId],
+  );
+  return result.rows.map(formatService);
+}
+
+export async function validateGitHubRepository(repositoryUrl: string) {
+  let repository;
+  try {
+    repository = await new GitHubIntegrator().getRepositoryMetadata(repositoryUrl);
+  } catch (error) {
+    const status = error && typeof error === 'object' && 'status' in error
+      ? error.status
+      : undefined;
+    if (error instanceof GitHubInstallationNotFoundError) {
+      throw new AppError(
+        422,
+        'GITHUB_APP_NOT_INSTALLED',
+        'Install the SCAPE GitHub App on this repository owner or organization, then verify the URL again.',
+      );
+    }
+    if (status === 403 || status === 404) {
+      throw new AppError(
+        422,
+        'GITHUB_REPOSITORY_UNAVAILABLE',
+        'SCAPE cannot access this repository. Install the SCAPE GitHub App on it, then verify the URL again.',
+      );
+    }
+    throw error;
+  }
+
+  return {
+    htmlUrl: repository.htmlUrl,
+    fullName: repository.fullName,
+  };
+}
+
+/**
+ * Get a service by ID, scoped to its owner.
+ */
+export async function getServiceById(serviceId: string, ownerId: string) {
+  const result = await query<ServiceRow>(
+    `SELECT s.*, st.name AS template_name
+     FROM services s
+     LEFT JOIN service_templates st ON st.id = s.template_id
+     WHERE s.id = $1 AND s.owner_id = $2`,
+    [serviceId, ownerId],
   );
 
   if (!result.rowCount || result.rowCount === 0) {
     throw new AppError(404, 'SERVICE_NOT_FOUND', 'Service not found');
   }
 
-  const service = result.rows[0];
-
-  // Enforce team ownership (admin bypasses)
-  if (userRole !== 'admin' && service.team_id !== teamId) {
-    throw new AppError(403, 'FORBIDDEN', 'You do not have access to this service');
-  }
-
-  return formatService(service);
+  return formatService(result.rows[0]);
 }
 
 /** Check a provisioned endpoint without following redirects or arbitrary URLs. */
-export async function getServiceHealth(serviceId: string, teamId: string, userRole: string) {
-  const service = await getServiceById(serviceId, teamId, userRole);
+export async function getServiceHealth(serviceId: string, ownerId: string) {
+  const service = await getServiceById(serviceId, ownerId);
   const checkedAt = new Date().toISOString();
 
   if (service.status !== 'active' || !service.serviceEndpoint) {
@@ -347,8 +310,8 @@ export async function getServiceHealth(serviceId: string, teamId: string, userRo
 /**
  * Delete (decommission) a service.
  */
-export async function deleteService(serviceId: string, userId: string, teamId: string, userRole: string) {
-  const service = await getServiceById(serviceId, teamId, userRole);
+export async function deleteService(serviceId: string, userId: string) {
+  const service = await getServiceById(serviceId, userId);
 
   if (service.status === 'decommissioned') {
     throw new AppError(409, 'ALREADY_DECOMMISSIONED', 'Service is already decommissioned');
@@ -383,7 +346,7 @@ export async function deleteService(serviceId: string, userId: string, teamId: s
     terraformModulePath: template.rows[0].terraform_module_path,
     region: service.region,
     environment: service.environment,
-    teamId: service.teamId,
+    ownerId: userId,
     triggeredBy: userId,
     repositoryUrl: service.repositoryUrl,
   }, { jobId: `decommission-${job.id}` });

@@ -74,6 +74,4 @@ export { servicesApi } from './services.js';
 export { templatesApi } from './templates.js';
 export { deploymentsApi } from './deployments.js';
 export { costsApi } from './costs.js';
-export { auditApi } from './audit.js';
-export { teamsApi } from './teams.js';
 
